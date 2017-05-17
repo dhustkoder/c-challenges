@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <time.h>
+#include <errno.h>
 #include <unistd.h>
 #include <dirent.h>
 #include <getopt.h>
@@ -10,6 +11,7 @@
 #include <sys/types.h>
 #include <pwd.h>
 #include <grp.h>
+
 
 static const unsigned char kOptAll  = 0x04;
 static const unsigned char kOptLong = 0x02;
@@ -86,25 +88,40 @@ int main(const int argc, char* const* argv)
 	DIR* const dir = opendir(dirname);
 
 	if (dir == NULL) {
-		perror("Couldn't open directory: ");
+		perror("Couldn't open directory");
 		return EXIT_FAILURE;
 	}
 
+	const int dirnamelen = strlen(dirname);
 	const unsigned char opts = get_opts(argc, argv);
 
-	if (!(opts&kOptDir)) {
+	if (opts&kOptDir) {
+		catbuffer(dirname);
+		catbuffer("\n");
+	} else {
 		const struct dirent* ent;
-
 		while ((ent = readdir(dir)) != NULL) {
 			if (ent->d_name[0] == '.' && !(opts&kOptAll))
 				continue;
 
 			if (opts&kOptLong) {
 				struct stat stats;
-				stat(ent->d_name, &stats);
+				const int dnamelen = strlen(ent->d_name);
+				const int pathlen = dirnamelen + dnamelen;
+				char path[dirnamelen + dnamelen + 2];
+				memset(path, 0, pathlen);
+				strcat(path, dirname);
+				strcat(path, "/");
+				strcat(path, ent->d_name);
+
+				if (stat(path, &stats) == -1) {
+					fprintf(stderr, "Error while reading %s: %s\n", path, strerror(errno));
+					continue;
+				}
+
 				const int stmode = stats.st_mode;
-				const char* const uname = getpwuid(stats.st_uid)->pw_name;
-				const char* const ugrp = getgrgid(stats.st_gid)->gr_name;
+				const struct passwd* const passwd = getpwuid(stats.st_uid);
+				const struct group* const grp = getgrgid(stats.st_gid);
 				char size[20];
 				char links[20];
 				char date[20];
@@ -125,23 +142,21 @@ int main(const int argc, char* const* argv)
 				catbuffer(" ");
 				catbuffer(links);
 				catbuffer(" ");
-				catbuffer(uname);
+				catbuffer(passwd ? passwd->pw_name : " ");
 				catbuffer(" ");
-				catbuffer(ugrp);
+				catbuffer(grp ? grp->gr_name : " ");
 				catbuffer(" ");
 				catbuffer(size);
 				catbuffer(" ");
 				catbuffer(date);
 				catbuffer(" ");
 			}
-
 			catbuffer(ent->d_name);
 			catbuffer("\n");
 		}
-
-		flushbuffer();
 	}
 	
+	flushbuffer();
 	closedir(dir);
 	return EXIT_SUCCESS;
 }
