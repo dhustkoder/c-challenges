@@ -74,7 +74,16 @@ int main(const int argc, char* const* argv)
 		return EXIT_FAILURE;
 	}
 
-	DIR* const dir = opendir(argv[1]);
+	const char* dirname = NULL;
+
+	for (int i = 1; i < argc; ++i) {
+		if (argv[i][0] != '-') {
+			dirname = argv[i];
+			break;
+		}
+	}
+
+	DIR* const dir = opendir(dirname);
 
 	if (dir == NULL) {
 		perror("Couldn't open directory: ");
