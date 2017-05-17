@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <dirent.h>
 
+
 int main(const int argc, const char* const* argv)
 {
 	if (argc < 2) {
@@ -16,16 +17,11 @@ int main(const int argc, const char* const* argv)
 		return EXIT_FAILURE;
 	}
 
-	struct dirent* file;
-
-	while ((file = readdir(dir)) != NULL)
-		printf("%s\n", file->d_name);
+	const struct dirent* ent;
+	while ((ent = readdir(dir)) != NULL)
+		printf("NAME: %-13s| TYPE: %d\n", ent->d_name, ent->d_type); 
 
 	closedir(dir);
 	return EXIT_SUCCESS;
 }
-
-
-
-
 
