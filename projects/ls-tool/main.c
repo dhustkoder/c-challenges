@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <time.h>
 #include <errno.h>
 #include <unistd.h>
@@ -11,6 +12,19 @@
 #include <sys/types.h>
 #include <pwd.h>
 #include <grp.h>
+
+
+struct File {
+	struct dirent ent;
+	struct stat stat;
+	struct File* next;
+};
+
+
+struct FileList {
+	struct File* head;
+	int size;
+};
 
 
 static const unsigned char kOptAll  = 0x04;
@@ -69,15 +83,104 @@ static inline unsigned char get_opts(const int argc, char* const* argv)
 }
 
 
+static inline struct FileList* mkfilelist(DIR* const dir)
+{
+	struct FileList* const fl = calloc(1, sizeof(struct FileList));
+	const struct dirent* ent;
+	struct File** p = &fl->head;
+
+	while ((ent = readdir(dir)) != NULL) {
+		(*p) = calloc(1, sizeof(struct File));
+		memcpy(&(*p)->ent, ent, sizeof(struct dirent));
+		stat(ent->d_name, &(*p)->stat);
+		p = &(*p)->next;
+		++fl->size;
+	}
+
+	return fl;
+}
+
+
+static inline void rmfilelist(struct FileList* const fl)
+{
+	struct File* p = fl->head;
+	struct File* rm;
+
+	while (p != NULL) {
+		rm = p;
+		p = p->next;
+		free(rm);
+	}
+
+	free(fl);
+}
+
+static inline int lsshort(DIR* const dir, const bool all)
+{
+	const struct dirent* ent;
+
+	while ((ent = readdir(dir)) != NULL) {
+		if (!all && ent->d_name[0] == '.')
+			continue;
+		catbuffer(ent->d_name);
+		catbuffer(" ");
+	}
+
+	catbuffer("\n");
+	return EXIT_SUCCESS;
+}
+
+
+static inline int lslong(DIR* const dir, const bool all)
+{
+	struct FileList* const fl = mkfilelist(dir);
+
+	for (struct File* p = fl->head; p != NULL; p = p->next) {
+		if (!all && p->ent.d_name[0] == '.')
+			continue;
+		catbuffer(p->ent.d_name);
+		catbuffer(" ");
+	}
+
+	catbuffer("\n");
+	rmfilelist(fl);
+	return EXIT_SUCCESS;
+}
+
+
+static inline int ls(const char* const dirname, const unsigned char opts)
+{
+	DIR* const dir = opendir(dirname);
+	if (dir == NULL) {
+		fprintf(stderr, "Couldn't open directory: %s", strerror(errno));
+		return EXIT_FAILURE;
+	}
+
+	int ret;
+	if (opts&kOptDir) {
+		catbuffer(dirname);
+		catbuffer("\n");
+		ret = EXIT_SUCCESS;	
+	} else if (opts&kOptLong) {
+		ret = lslong(dir, (opts&kOptAll) != 0);
+	} else {
+		ret = lsshort(dir, (opts&kOptAll) != 0);
+	}
+	
+	flushbuffer();
+	closedir(dir);
+	return ret;
+}
+
+
 int main(const int argc, char* const* argv)
 {
 	if (argc < 2) {
-		fprintf(stderr, "Usage: %s [directory]\n", argv[0]);
+		fprintf(stderr, "Usage: %s [directory] [options]\n", argv[0]);
 		return EXIT_FAILURE;
 	}
 
 	const char* dirname = NULL;
-
 	for (int i = 1; i < argc; ++i) {
 		if (argv[i][0] != '-') {
 			dirname = argv[i];
@@ -85,16 +188,20 @@ int main(const int argc, char* const* argv)
 		}
 	}
 
-	DIR* const dir = opendir(dirname);
-
-	if (dir == NULL) {
-		perror("Couldn't open directory");
+	if (dirname == NULL) {
+		fprintf(stderr, "Missing directory path\n");
 		return EXIT_FAILURE;
 	}
 
-	const int dirnamelen = strlen(dirname);
-	const unsigned char opts = get_opts(argc, argv);
+	ls(dirname, get_opts(argc, argv));
 
+	return EXIT_SUCCESS;
+}
+
+
+
+
+	/*
 	if (opts&kOptDir) {
 		catbuffer(dirname);
 		catbuffer("\n");
@@ -127,7 +234,7 @@ int main(const int argc, char* const* argv)
 				char date[20];
 				sprintf(size, "%ld", stats.st_size);
 				sprintf(links, "%ld", stats.st_nlink);
-				strftime(date, 20, "%d-%m-%y", localtime(&(stats.st_ctime)));
+				strftime(date, 20, "%B %d %H:%M", localtime(&stats.st_ctime));
 
 				catbuffer((S_ISDIR(stmode)) ? "d" : "-");
 				catbuffer((stmode&S_IRUSR) ? "r" : "-");
@@ -150,14 +257,16 @@ int main(const int argc, char* const* argv)
 				catbuffer(" ");
 				catbuffer(date);
 				catbuffer(" ");
+				catbuffer(ent->d_name);
+				catbuffer("\n");
+			} else {
+				catbuffer(ent->d_name);
+				catbuffer(" ");
 			}
-			catbuffer(ent->d_name);
-			catbuffer("\n");
 		}
 	}
 	
 	flushbuffer();
 	closedir(dir);
-	return EXIT_SUCCESS;
-}
+	*/
 

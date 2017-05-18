@@ -9,5 +9,5 @@ $(info "PROJECTS:" $(PROJECTS))
 
 all:
 	mkdir -p $(BUILD_DIR)
-	@$(foreach proj, $(PROJECTS), $(CC) $(CFLAGS) $(proj)/*.c -o $(BUILD_DIR)/$(shell basename $(proj));)
+	$(foreach proj, $(PROJECTS), $(CC) $(CFLAGS) $(proj)/*.c -o $(BUILD_DIR)/$(shell basename $(proj));)
 
