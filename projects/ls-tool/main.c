@@ -16,7 +16,7 @@
 
 
 struct File {
-	struct dirent ent;
+	const char* name;
 	struct stat stat;
 	struct File* next;
 };
@@ -49,33 +49,26 @@ static const struct option long_opts[] = {
 	{NULL, 0, NULL, 0}
 };
 
-#define kBufferSize ((2048))
-static char buffer[kBufferSize + 1];
+#define BUFFERSIZE ((4096))
+static char buffer[BUFFERSIZE + 1];
 static int buff_idx = 0;
 
 
 static inline void flushbuffer(void)
 {
-	buffer[buff_idx] = '\0';
-	printf("%s", buffer);
+	write(STDOUT_FILENO, buffer, buff_idx);
 	buff_idx = 0;
 }
 
 
 static inline void catbuffer(const char* const fmt, ...)
 {
+	if (buff_idx >= (int)(BUFFERSIZE * 0.80f))
+		flushbuffer();
+
 	va_list argptr;
 	va_start(argptr, fmt);
-	int writen = vsnprintf(&buffer[buff_idx], kBufferSize - buff_idx, fmt, argptr);
-	buff_idx += writen;
-
-	if (buff_idx >= kBufferSize) {
-		buff_idx = kBufferSize;
-		flushbuffer();
-		writen = vsnprintf(&buffer[buff_idx], kBufferSize, &fmt[writen], argptr);
-		buff_idx += writen;
-	}
-
+	buff_idx += vsprintf(&buffer[buff_idx], fmt, argptr);
 	va_end(argptr);
 }
 
@@ -98,16 +91,21 @@ static inline unsigned char get_opts(const int argc, char* const* argv)
 }
 
 
-static inline struct FileList* mkfilelist(DIR* const dir)
+static inline struct FileList* mkfilelist(DIR* const dir, const char* const basepath)
 {
 	struct FileList* const fl = calloc(1, sizeof(struct FileList));
-	const struct dirent* ent;
+	const int baselen = strlen(basepath);
 	struct File** p = &fl->head;
-
+	const struct dirent* ent;
+	
 	while ((ent = readdir(dir)) != NULL) {
 		(*p) = calloc(1, sizeof(struct File));
-		memcpy(&(*p)->ent, ent, sizeof(struct dirent));
-		stat(ent->d_name, &(*p)->stat);
+		(*p)->name = ent->d_name;
+
+		char path[baselen + strlen(ent->d_name) + 2];
+		sprintf(path, "%s/%s", basepath, ent->d_name);
+		stat(path, &(*p)->stat);
+
 		p = &(*p)->next;
 		++fl->size;
 	}
@@ -116,18 +114,16 @@ static inline struct FileList* mkfilelist(DIR* const dir)
 }
 
 
-static inline void rmfilelist(struct FileList* const fl)
+static inline void rmfilelist(const struct FileList* const fl)
 {
 	struct File* p = fl->head;
-	struct File* rm;
-
 	while (p != NULL) {
-		rm = p;
+		struct File* const rm = p;
 		p = p->next;
 		free(rm);
 	}
 
-	free(fl);
+	free((void*)fl);
 }
 
 
@@ -147,7 +143,7 @@ static inline struct Paddings getpaddings(const struct File* p)
 	struct Paddings pad = { 0, 0, 0, 0, 0 };
 
 	for (; p != NULL; p = p->next) {
-		int aux = strlen(p->ent.d_name);
+		int aux = strlen(p->name);
 		if (aux > pad.name)
 			pad.name = aux;
 
@@ -175,37 +171,26 @@ static inline struct Paddings getpaddings(const struct File* p)
 static inline int lsshort(DIR* const dir, const bool all)
 {
 	const struct dirent* ent;
-	int pad = 0;
-	while ((ent = readdir(dir)) != NULL) {
-		int len = strlen(ent->d_name);
-		if (len > pad)
-			pad = len;
-	}
-
-	rewinddir(dir);
-
 	while ((ent = readdir(dir)) != NULL) {
 		if (!all && ent->d_name[0] == '.')
 			continue;
-		catbuffer("%-*s ", pad, ent->d_name);
+		catbuffer("%s\n", ent->d_name);
 	}
-
-	catbuffer("\n");
 	return EXIT_SUCCESS;
 }
 
 
-static inline int lslong(DIR* const dir, const bool all)
+static inline int lslong(DIR* const dir, const char* const basepath, const bool all)
 {
-	// permissions - links - user - user group - size - last modified date - name
-	struct FileList* const fl = mkfilelist(dir);
+	// format: permissions - links - user - user group - size - last modified date - file name
+	const struct FileList* const fl = mkfilelist(dir, basepath);
 	const struct Paddings pad = getpaddings(fl->head);
 	char perm[11];
-	char date[15];
+	char date[21];
 	perm[10] = '\0';
 
 	for (struct File* p = fl->head; p != NULL; p = p->next) {
-		if (!all && p->ent.d_name[0] == '.')
+		if (!all && p->name[0] == '.')
 			continue;
 		perm[0] = S_ISDIR(p->stat.st_mode) ? 'd' : '-';
 		perm[1] = (p->stat.st_mode&S_IRUSR) ? 'r' : '-';
@@ -217,13 +202,13 @@ static inline int lslong(DIR* const dir, const bool all)
 		perm[7] = (p->stat.st_mode&S_IROTH) ? 'r' : '-';
 		perm[8] = (p->stat.st_mode&S_IWOTH) ? 'w' : '-';
 		perm[9] = (p->stat.st_mode&S_IXOTH) ? 'x' : '-';
-		strftime(date, 20, "%B %d %H:%M", localtime(&p->stat.st_ctime));
-		catbuffer("%s %*d %*s %*s %*d %s %-*s\n",
+		strftime(date, 20, "%b %d %H:%M", localtime(&p->stat.st_ctime));
+		catbuffer("%s %*d %*s %*s %*ld %s %-*s\n",
 		          perm, pad.links, p->stat.st_nlink,
 			  pad.usr, getpwuid(p->stat.st_uid)->pw_name,
 			  pad.ugrp, getgrgid(p->stat.st_gid)->gr_name,
 			  pad.size, p->stat.st_size,
-			  date, pad.name, p->ent.d_name);
+			  date, pad.name, p->name);
 	}
 
 	rmfilelist(fl);
@@ -235,17 +220,16 @@ static inline int ls(const char* const dirname, const unsigned char opts)
 {
 	DIR* const dir = opendir(dirname);
 	if (dir == NULL) {
-		fprintf(stderr, "Couldn't open directory: %s", strerror(errno));
+		fprintf(stderr, "Couldn't open directory: %s\n", strerror(errno));
 		return EXIT_FAILURE;
 	}
 
 	int ret;
 	if (opts&kOptDir) {
-		catbuffer(dirname);
-		catbuffer("\n");
+		catbuffer("%s\n", dirname);
 		ret = EXIT_SUCCESS;	
 	} else if (opts&kOptLong) {
-		ret = lslong(dir, (opts&kOptAll) != 0);
+		ret = lslong(dir, dirname, (opts&kOptAll) != 0);
 	} else {
 		ret = lsshort(dir, (opts&kOptAll) != 0);
 	}
@@ -276,8 +260,6 @@ int main(const int argc, char* const* argv)
 		return EXIT_FAILURE;
 	}
 
-	ls(dirname, get_opts(argc, argv));
-
-	return EXIT_SUCCESS;
+	return ls(dirname, get_opts(argc, argv));
 }
 
