@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <time.h>
 #include <errno.h>
 #include <unistd.h>
@@ -27,6 +28,15 @@ struct FileList {
 };
 
 
+struct Paddings {
+	int links;
+	int usr;
+	int ugrp;
+	int size;
+	int name;
+};
+
+
 static const unsigned char kOptAll  = 0x04;
 static const unsigned char kOptLong = 0x02;
 static const unsigned char kOptDir  = 0x01;
@@ -40,7 +50,7 @@ static const struct option long_opts[] = {
 };
 
 #define kBufferSize ((2048))
-static char buffer[kBufferSize];
+static char buffer[kBufferSize + 1];
 static int buff_idx = 0;
 
 
@@ -52,16 +62,21 @@ static inline void flushbuffer(void)
 }
 
 
-static inline void catbuffer(const char* const str)
+static inline void catbuffer(const char* const fmt, ...)
 {
-	const int len = strlen(str);
-	if ((buff_idx + len) >= kBufferSize) {
-		printf("%s", buffer);
-		buff_idx = 0;
+	va_list argptr;
+	va_start(argptr, fmt);
+	int writen = vsnprintf(&buffer[buff_idx], kBufferSize - buff_idx, fmt, argptr);
+	buff_idx += writen;
+
+	if (buff_idx >= kBufferSize) {
+		buff_idx = kBufferSize;
+		flushbuffer();
+		writen = vsnprintf(&buffer[buff_idx], kBufferSize, &fmt[writen], argptr);
+		buff_idx += writen;
 	}
 
-	memcpy(&buffer[buff_idx], str, len);
-	buff_idx += len;
+	va_end(argptr);
 }
 
 
@@ -115,15 +130,64 @@ static inline void rmfilelist(struct FileList* const fl)
 	free(fl);
 }
 
+
+static inline int intlen(int n)
+{
+	int len = 1;
+	while (n != 0) {
+		++len;
+		n /= 10;
+	}
+	return len;
+}
+
+
+static inline struct Paddings getpaddings(const struct File* p)
+{
+	struct Paddings pad = { 0, 0, 0, 0, 0 };
+
+	for (; p != NULL; p = p->next) {
+		int aux = strlen(p->ent.d_name);
+		if (aux > pad.name)
+			pad.name = aux;
+
+		aux = intlen(p->stat.st_nlink);
+		if (aux > pad.links)
+			pad.links = aux;
+
+		aux = intlen(p->stat.st_size);
+		if (aux > pad.size)
+			pad.size = aux;
+
+		aux = strlen(getpwuid(p->stat.st_uid)->pw_name);
+		if (aux > pad.usr)
+			pad.usr = aux;
+
+		aux = strlen(getgrgid(p->stat.st_gid)->gr_name);
+		if (aux > pad.ugrp)
+			pad.ugrp = aux;
+	}
+
+	return pad;
+}
+
+
 static inline int lsshort(DIR* const dir, const bool all)
 {
 	const struct dirent* ent;
+	int pad = 0;
+	while ((ent = readdir(dir)) != NULL) {
+		int len = strlen(ent->d_name);
+		if (len > pad)
+			pad = len;
+	}
+
+	rewinddir(dir);
 
 	while ((ent = readdir(dir)) != NULL) {
 		if (!all && ent->d_name[0] == '.')
 			continue;
-		catbuffer(ent->d_name);
-		catbuffer(" ");
+		catbuffer("%-*s ", pad, ent->d_name);
 	}
 
 	catbuffer("\n");
@@ -133,16 +197,35 @@ static inline int lsshort(DIR* const dir, const bool all)
 
 static inline int lslong(DIR* const dir, const bool all)
 {
+	// permissions - links - user - user group - size - last modified date - name
 	struct FileList* const fl = mkfilelist(dir);
+	const struct Paddings pad = getpaddings(fl->head);
+	char perm[11];
+	char date[15];
+	perm[10] = '\0';
 
 	for (struct File* p = fl->head; p != NULL; p = p->next) {
 		if (!all && p->ent.d_name[0] == '.')
 			continue;
-		catbuffer(p->ent.d_name);
-		catbuffer(" ");
+		perm[0] = S_ISDIR(p->stat.st_mode) ? 'd' : '-';
+		perm[1] = (p->stat.st_mode&S_IRUSR) ? 'r' : '-';
+		perm[2] = (p->stat.st_mode&S_IWUSR) ? 'w' : '-';
+		perm[3] = (p->stat.st_mode&S_IXUSR) ? 'x' : '-';
+		perm[4] = (p->stat.st_mode&S_IRGRP) ? 'r' : '-';
+		perm[5] = (p->stat.st_mode&S_IWGRP) ? 'w' : '-';
+		perm[6] = (p->stat.st_mode&S_IXGRP) ? 'x' : '-';
+		perm[7] = (p->stat.st_mode&S_IROTH) ? 'r' : '-';
+		perm[8] = (p->stat.st_mode&S_IWOTH) ? 'w' : '-';
+		perm[9] = (p->stat.st_mode&S_IXOTH) ? 'x' : '-';
+		strftime(date, 20, "%B %d %H:%M", localtime(&p->stat.st_ctime));
+		catbuffer("%s %*d %*s %*s %*d %s %-*s\n",
+		          perm, pad.links, p->stat.st_nlink,
+			  pad.usr, getpwuid(p->stat.st_uid)->pw_name,
+			  pad.ugrp, getgrgid(p->stat.st_gid)->gr_name,
+			  pad.size, p->stat.st_size,
+			  date, pad.name, p->ent.d_name);
 	}
 
-	catbuffer("\n");
 	rmfilelist(fl);
 	return EXIT_SUCCESS;
 }
@@ -197,76 +280,4 @@ int main(const int argc, char* const* argv)
 
 	return EXIT_SUCCESS;
 }
-
-
-
-
-	/*
-	if (opts&kOptDir) {
-		catbuffer(dirname);
-		catbuffer("\n");
-	} else {
-		const struct dirent* ent;
-		while ((ent = readdir(dir)) != NULL) {
-			if (ent->d_name[0] == '.' && !(opts&kOptAll))
-				continue;
-
-			if (opts&kOptLong) {
-				struct stat stats;
-				const int dnamelen = strlen(ent->d_name);
-				const int pathlen = dirnamelen + dnamelen;
-				char path[dirnamelen + dnamelen + 2];
-				memset(path, 0, pathlen);
-				strcat(path, dirname);
-				strcat(path, "/");
-				strcat(path, ent->d_name);
-
-				if (stat(path, &stats) == -1) {
-					fprintf(stderr, "Error while reading %s: %s\n", path, strerror(errno));
-					continue;
-				}
-
-				const int stmode = stats.st_mode;
-				const struct passwd* const passwd = getpwuid(stats.st_uid);
-				const struct group* const grp = getgrgid(stats.st_gid);
-				char size[20];
-				char links[20];
-				char date[20];
-				sprintf(size, "%ld", stats.st_size);
-				sprintf(links, "%ld", stats.st_nlink);
-				strftime(date, 20, "%B %d %H:%M", localtime(&stats.st_ctime));
-
-				catbuffer((S_ISDIR(stmode)) ? "d" : "-");
-				catbuffer((stmode&S_IRUSR) ? "r" : "-");
-				catbuffer((stmode&S_IWUSR) ? "w" : "-");
-				catbuffer((stmode&S_IXUSR) ? "x" : "-");
-				catbuffer((stmode&S_IRGRP) ? "r" : "-");
-				catbuffer((stmode&S_IWGRP) ? "w" : "-");
-				catbuffer((stmode&S_IXGRP) ? "x" : "-");
-				catbuffer((stmode&S_IROTH) ? "r" : "-");
-				catbuffer((stmode&S_IWOTH) ? "w" : "-");
-				catbuffer((stmode&S_IXOTH) ? "x" : "-");
-				catbuffer(" ");
-				catbuffer(links);
-				catbuffer(" ");
-				catbuffer(passwd ? passwd->pw_name : " ");
-				catbuffer(" ");
-				catbuffer(grp ? grp->gr_name : " ");
-				catbuffer(" ");
-				catbuffer(size);
-				catbuffer(" ");
-				catbuffer(date);
-				catbuffer(" ");
-				catbuffer(ent->d_name);
-				catbuffer("\n");
-			} else {
-				catbuffer(ent->d_name);
-				catbuffer(" ");
-			}
-		}
-	}
-	
-	flushbuffer();
-	closedir(dir);
-	*/
 
