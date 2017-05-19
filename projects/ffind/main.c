@@ -17,6 +17,18 @@ static inline bool searchdir(const char* const filename, DIR* const dirp)
 }
 
 
+static inline int stfind(const char* const root, const char* const file)
+{
+	return EXIT_SUCCESS;
+}
+
+
+static inline int mtfind(const char* const root, const char* const file)
+{
+	return EXIT_SUCCESS;
+}
+
+
 int main(const int argc, const char* const* argv)
 {
 	if (argc < 3) {
@@ -24,21 +36,12 @@ int main(const int argc, const char* const* argv)
 		return EXIT_FAILURE;
 	}
 
-	const char* const dirname = argv[1];
-	const char* const filename = argv[2];
+	const char* const root = argv[1];
+	const char* const file = argv[2];
+	const int r1 = stfind(root, file);
+	const int r2 = mtfind(root, file);
 
-	DIR* const dirp = opendir(dirname);
-	if (dirp == NULL) {
-		perror("Couldn't open directory");
-		return EXIT_FAILURE;
-	}
-
-	if (searchdir(filename, dirp))
-		printf("FOUND\n");
-	else
-		printf("NOT FOUND\n");
-
-	closedir(dirp);
-	return EXIT_SUCCESS;
+	return (r1 == EXIT_SUCCESS && r2 == EXIT_SUCCESS)
+	       ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
