@@ -10,7 +10,7 @@ if [[ "${CC}" == "" ]]; then
 fi
 
 
-CFLAGS="-std=c11 -Wall -Wextra"
+CFLAGS="-std=c11 -Wall -Wextra -lpthread"
 CFLAGS_DEBUG="-O0 -ggdb"
 CFLAGS_RELEASE="-O3 -s"
 
