@@ -4,21 +4,57 @@
 #include <stdbool.h>
 #include <pthread.h>
 #include <dirent.h>
+#include <errno.h>
 
 
-static inline bool searchdir(const char* const filename, DIR* const dirp)
+static inline bool searchdir(const char* const dirname, const char* const filename)
 {
-	const struct dirent* ent;
-	while ((ent = readdir(dirp)) != NULL) {
-		if (strcmp(filename, ent->d_name) == 0)
-			return true;
+	DIR* const dirp = opendir(dirname);
+	if (dirp == NULL) {
+		fprintf(stderr, "Couldn't open directory \"%s\": %s\n", dirname, strerror(errno));
+		return false;
 	}
-	return false;
+
+	const struct dirent* ent;
+	bool ret = false;
+
+	while ((ent = readdir(dirp)) != NULL) {
+		if (strcmp(filename, ent->d_name) == 0) {
+			ret = true;
+			break;
+		}
+	}
+
+	if (!ret) {
+		rewinddir(dirp);
+
+		while ((ent = readdir(dirp)) != NULL) {
+			if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
+				continue;
+
+			const int len = strlen(dirname) + strlen(ent->d_name);
+			char* const fullpath = malloc(len + 2);
+			sprintf(fullpath, "%s/%s", dirname, ent->d_name);
+			const bool found = searchdir(fullpath, filename);
+			free(fullpath);
+			if (found) {
+				ret = true;
+				break;
+			}
+		}
+	}
+
+
+	closedir(dirp);
+	return ret;
 }
 
 
 static inline int stfind(const char* const root, const char* const file)
 {
+	if (!searchdir(root, file))
+		return EXIT_FAILURE;
+
 	return EXIT_SUCCESS;
 }
 
@@ -39,9 +75,13 @@ int main(const int argc, const char* const* argv)
 	const char* const root = argv[1];
 	const char* const file = argv[2];
 	const int r1 = stfind(root, file);
-	const int r2 = mtfind(root, file);
 
-	return (r1 == EXIT_SUCCESS && r2 == EXIT_SUCCESS)
-	       ? EXIT_SUCCESS : EXIT_FAILURE;
+	if (r1 == EXIT_FAILURE) {
+		puts("NOT FOUND");
+		return EXIT_FAILURE;
+	}
+
+	puts("FOUND");
+	return EXIT_SUCCESS;
 }
 

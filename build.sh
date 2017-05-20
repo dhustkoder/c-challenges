@@ -11,7 +11,7 @@ fi
 
 
 CFLAGS="-std=c11 -Wall -Wextra -lpthread"
-CFLAGS_DEBUG="-O0 -ggdb"
+CFLAGS_DEBUG="-O0 -ggdb -fsanitize=address"
 CFLAGS_RELEASE="-O3 -s"
 
 if [[ $1 == "release" ]]; then
