@@ -27,21 +27,28 @@ static inline bool searchdir(const char* const dirname, const char* const filena
 
 	if (!ret) {
 		rewinddir(dirp);
-
+		int len = 0;
+		char* fullpath = NULL;
 		while ((ent = readdir(dirp)) != NULL) {
 			if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
 				continue;
 
-			const int len = strlen(dirname) + strlen(ent->d_name);
-			char* const fullpath = malloc(len + 2);
+			const int newlen = strlen(dirname) + strlen(ent->d_name);
+			if (newlen > len) {
+				free(fullpath);
+				fullpath = malloc(newlen + 2);
+				len = newlen;
+			}
+
 			sprintf(fullpath, "%s/%s", dirname, ent->d_name);
 			const bool found = searchdir(fullpath, filename);
-			free(fullpath);
+
 			if (found) {
 				ret = true;
 				break;
 			}
 		}
+		free(fullpath);
 	}
 
 
