@@ -108,6 +108,7 @@ int main(const int argc, const char* const* argv)
 	}
 
 	printf("FOUND:\n%s", foundbuffer);
+	free(foundbuffer);
 	return EXIT_SUCCESS;
 }
 
