@@ -31,9 +31,11 @@ static inline int stfind(char* const rootdir, const char* const target)
 	const FTSENT* parent;
 
 	while ((parent = fts_read(ftsp)) != NULL) {
+		if (parent->fts_info != FTS_D)
+			continue;
 		for (const FTSENT* child = fts_children(ftsp, 0); child != NULL; child = child->fts_link)
 			if (strcmp(child->fts_name, target) == 0)
-				printf("%s/%s\n", parent->fts_name, child->fts_name);
+				printf("%s/%s\n", parent->fts_path, child->fts_name);
 	}
 
 	fts_close(ftsp);
@@ -41,38 +43,28 @@ static inline int stfind(char* const rootdir, const char* const target)
 }
 
 
-static void* th_search(void* p)
-{
-	FTS* const ftsp = *((void**)p);	
-	const char* const target = *(((void**)p) + 1);
-
-	const FTSENT *parent, *child;
-	
-	while ((parent = fts_read(ftsp)) != NULL) {
-		for (child = fts_children(ftsp, 0); child != NULL; child = child->fts_link) {
-			if (strcmp(child->fts_name, target) == 0)
-				printf("%s/%s\n", parent->fts_path, child->fts_name);
-		}
-	}
-
-	return NULL;
-}
-
-
 static inline int mtfind(char* const rootdir, const char* const target)
 {
 	char* path[] = { rootdir, NULL };
 
-	FTS* const ftsp = fts_open(path, 0, &compare);
+	FTS* const ftsp = fts_open(path, FTS_NOSTAT | FTS_COMFOLLOW | FTS_NOCHDIR, &compare);
 
 	if (ftsp == NULL) {
 		fprintf(stderr, "Couldn't open \"%s\": %s", rootdir, strerror(errno));
 		return EXIT_FAILURE;
 	}
 
-	void* th_args[] = { ftsp, (void*) target };
-
-	th_search(th_args);
+	const FTSENT *parent, *child;
+	
+	while ((parent = fts_read(ftsp)) != NULL) {
+		const unsigned short info = parent->fts_info;
+		if (info != FTS_D)
+			continue;
+		printf("PARENT [%s] CHILDREN", parent->fts_path);
+		for (child = fts_children(ftsp, 0); child != NULL; child = child->fts_link)
+			printf(" [%s]", child->fts_name);
+		putchar('\n');
+	}
 
 	fts_close(ftsp);
 	return EXIT_SUCCESS;
@@ -86,6 +78,6 @@ int main(const int argc, char* const* argv)
 		return EXIT_FAILURE;
 	}
 
-	return mtfind(argv[1], argv[2]);
+	return stfind(argv[1], argv[2]);
 }
 
