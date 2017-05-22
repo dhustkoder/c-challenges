@@ -24,7 +24,7 @@ static inline void addfound(const char* const dirname, const char* const filenam
 }
 
 
-static inline bool searchdir(const char* const dirname, const char* const filename)
+static inline bool stfind(const char* const dirname, const char* const filename)
 {
 	DIR* const dirp = opendir(dirname);
 	if (dirp == NULL) {
@@ -64,7 +64,7 @@ static inline bool searchdir(const char* const dirname, const char* const filena
 		sprintf(fullpath, "%s/%s", dirname, ent->d_name);
 		stat(fullpath, &st);
 		if (S_ISDIR(st.st_mode) && !S_ISLNK(st.st_mode) && access(fullpath, R_OK) == 0) {
-			const bool found = searchdir(fullpath, filename);
+			const bool found = stfind(fullpath, filename);
 			if (!ret && found)
 				ret = true;
 		}
@@ -73,15 +73,6 @@ static inline bool searchdir(const char* const dirname, const char* const filena
 	free(fullpath);
 	closedir(dirp);
 	return ret;
-}
-
-
-static inline int stfind(const char* const root, const char* const file)
-{
-	if (!searchdir(root, file))
-		return EXIT_FAILURE;
-
-	return EXIT_SUCCESS;
 }
 
 
