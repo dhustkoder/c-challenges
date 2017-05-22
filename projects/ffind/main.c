@@ -50,6 +50,31 @@ static inline int stfind(char* const rootdir, const char* const target)
 }
 
 
+static inline int mtfind(char* const rootdir, const char* const target)
+{
+	char* path[] = { rootdir, NULL };
+
+	FTS* const ftsp = fts_open(path, 0, &compare);
+
+	if (ftsp == NULL) {
+		fprintf(stderr, "Couldn't open \"%s\": %s", rootdir, strerror(errno));
+		return EXIT_FAILURE;
+	}
+
+	const FTSENT *parent, *child;
+	parent = fts_read(ftsp);
+	child = fts_children(ftsp, 0);
+	printf("PARENT -> %s\n", parent->fts_name);
+	while (child != NULL) {
+		printf("CHILD -> %s\n", child->fts_name);
+		child = child->fts_link;
+	}
+
+	fts_close(ftsp);
+	return EXIT_SUCCESS;
+}
+
+
 int main(const int argc, char* const* argv)
 {
 	if (argc < 3) {
@@ -57,6 +82,6 @@ int main(const int argc, char* const* argv)
 		return EXIT_FAILURE;
 	}
 
-	return stfind(argv[1], argv[2]);
+	return mtfind(argv[1], argv[2]);
 }
 
