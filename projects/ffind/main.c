@@ -21,10 +21,12 @@ static inline int stfind(char* const rootdir, const char* const target)
 {
 	char* path[] = { rootdir, NULL };
 
+	errno = 0;
 	FTS* const ftsp = fts_open(path, FTS_NOSTAT, &compare);
 
-	if (ftsp == NULL) {
-		fprintf(stderr, "Couldn't open \"%s\": %s", rootdir, strerror(errno));
+	if (errno != 0) {
+		fprintf(stderr, "Couldn't open \"%s\": %s\n", rootdir, strerror(errno));
+		fts_close(ftsp);
 		return EXIT_FAILURE;
 	}
 
@@ -33,7 +35,9 @@ static inline int stfind(char* const rootdir, const char* const target)
 	while ((parent = fts_read(ftsp)) != NULL) {
 		if (parent->fts_info != FTS_D)
 			continue;
-		for (const FTSENT* child = fts_children(ftsp, 0); child != NULL; child = child->fts_link)
+
+		const FTSENT* child = fts_children(ftsp, 0);
+		for ( ; child != NULL; child = child->fts_link)
 			if (strcmp(child->fts_name, target) == 0)
 				printf("%s/%s\n", parent->fts_path, child->fts_name);
 	}
@@ -42,15 +46,17 @@ static inline int stfind(char* const rootdir, const char* const target)
 	return EXIT_SUCCESS;
 }
 
-
+/*
 static inline int mtfind(char* const rootdir, const char* const target)
 {
 	char* path[] = { rootdir, NULL };
 
-	FTS* const ftsp = fts_open(path, FTS_NOSTAT | FTS_COMFOLLOW | FTS_NOCHDIR, &compare);
+	errno = 0;
+	FTS* const ftsp = fts_open(path, FTS_NOSTAT, &compare);
 
-	if (ftsp == NULL) {
-		fprintf(stderr, "Couldn't open \"%s\": %s", rootdir, strerror(errno));
+	if (errno != 0) {
+		fprintf(stderr, "Couldn't open \"%s\": %s\n", rootdir, strerror(errno));
+		fts_close(ftsp);
 		return EXIT_FAILURE;
 	}
 
@@ -69,7 +75,7 @@ static inline int mtfind(char* const rootdir, const char* const target)
 	fts_close(ftsp);
 	return EXIT_SUCCESS;
 }
-
+*/
 
 int main(const int argc, char* const* argv)
 {
