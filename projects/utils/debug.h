@@ -5,7 +5,7 @@
 #include <assert.h>
 #define dprintf(...) printf(__VA_ARGS__)
 #else
-#define dprintf(...) ((void))
+#define dprintf(...)
 #endif
 #endif
 

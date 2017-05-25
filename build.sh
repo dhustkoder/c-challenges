@@ -1,6 +1,7 @@
 #!/bin/bash
 ROOT_DIR=$(dirname "$0")
-PROJECTS=("${ROOT_DIR}/projects/ffind" 
+PROJECTS_DIR="${ROOT_DIR}/projects"
+PROJECTS=("${PROJECTS_DIR}/ffind" "${PROJECTS_DIR}/print" "${PROJECTS_DIR}/ls-tool")
 BUILD_DIR="${ROOT_DIR}/build"
 
 
@@ -22,7 +23,7 @@ else
 	CFLAGS="${CFLAGS} ${CFLAGS_DEBUG}"
 fi
 
-for proj in ${PROJECTS}; do
+for proj in ${PROJECTS[@]}; do
 	echo "${CC} ${CFLAGS} ${proj}/*.c -o ${BUILD_DIR}/${proj}"
 	$CC $CFLAGS $proj/*.c -o $BUILD_DIR/$(basename $proj)
 done
