@@ -1,7 +1,7 @@
 #!/bin/bash
 ROOT_DIR=$(dirname "$0")
 PROJECTS_DIR="${ROOT_DIR}/projects"
-PROJECTS=("${PROJECTS_DIR}/ffind" "${PROJECTS_DIR}/print" "${PROJECTS_DIR}/ls-tool")
+PROJECTS=("${PROJECTS_DIR}/ffind" "${PROJECTS_DIR}/print" "${PROJECTS_DIR}/ls-tool" "${PROJECTS_DIR}/chat")
 BUILD_DIR="${ROOT_DIR}/build"
 
 
