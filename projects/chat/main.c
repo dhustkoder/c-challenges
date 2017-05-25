@@ -33,6 +33,8 @@ static int server(void)
 		return EXIT_FAILURE;
 	}
 
+	n = 1;
+	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int));
 	bzero(&servaddr, sizeof(servaddr));
 	servaddr.sin_family = AF_INET;
 	servaddr.sin_addr.s_addr = INADDR_ANY;
@@ -127,7 +129,7 @@ static int client(void)
 	}
 
 	printf("%s\n", buffer);
-
+	ret = EXIT_SUCCESS;
 close_fd:
 	close(fd);
 	return ret;
