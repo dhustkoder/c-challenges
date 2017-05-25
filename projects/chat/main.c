@@ -11,6 +11,9 @@
 #include <netdb.h>
 
 
+#define RETFAIL(label) do { ret = EXIT_FAILURE; goto label; } while (0)
+
+
 const int kPort = 7171;
 
 
@@ -19,10 +22,10 @@ static char buffer[512] = { 0 };
 
 static int server(void)
 {
-	int fd, newfd;
+	int fd, newfd, n;
 	socklen_t clilen;
 	struct sockaddr_in servaddr, cliaddr;
-	int n;
+	int ret;
 
 	fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (fd < 0) {
@@ -37,7 +40,7 @@ static int server(void)
 
 	if (bind(fd, (struct sockaddr*) &servaddr, sizeof(servaddr)) < 0) {
 		perror("Couldn't bind");
-		return EXIT_FAILURE;
+		RETFAIL(close_fd);
 	}
 
 	listen(fd, 5);
@@ -46,37 +49,41 @@ static int server(void)
 
 	if (newfd < 0) {
 		perror("Couldn't accept socket");
-		return EXIT_FAILURE;
+		RETFAIL(close_fd);
 	}
 
 	n = read(newfd, buffer, sizeof(buffer) - 1);
 
 	if (n < 0) {
 		perror("Couldn't read message");
-		return EXIT_FAILURE;
+		RETFAIL(close_newfd);
 	}
 
-	printf("MSG: %s\n", buffer);
+	printf("MSG: %s", buffer);
 
 	n = write(newfd, "Got Your Message!", 17);
 
 	if (n < 0) {
 		perror("Couldn't write message");
-		return EXIT_FAILURE;
+		RETFAIL(close_newfd);
 	}
 
+	ret = EXIT_SUCCESS;
+
+close_newfd:
 	close(newfd);
+close_fd:
 	close(fd);
-	return EXIT_SUCCESS;
+	return ret;
 }
 
 
 static int client(void)
 {
-	int fd;
+	int fd, n;
 	struct sockaddr_in servaddr;
 	struct hostent *server;
-	int n;
+	int ret;
 
 	fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (fd < 0) {
@@ -87,7 +94,7 @@ static int client(void)
 	server = gethostbyname("localhost");
 	if (server == NULL) {
 		perror("Couldn't find host");
-		return EXIT_FAILURE;
+		RETFAIL(close_fd);
 	}
 
 	bzero(&servaddr, sizeof(servaddr));
@@ -97,7 +104,7 @@ static int client(void)
 
 	if (connect(fd, (struct sockaddr *) &servaddr, sizeof(servaddr)) < 0) {
 		perror("Couldn't connect");
-		return EXIT_FAILURE;
+		RETFAIL(close_fd);
 	}
 
 	printf("Please enter the message: ");
@@ -108,7 +115,7 @@ static int client(void)
 
 	if (n < 0)  {
 		perror("Couldn't write to socket");
-		return EXIT_FAILURE;
+		RETFAIL(close_fd);
 	}
 
 	bzero(buffer, 256);
@@ -116,12 +123,14 @@ static int client(void)
 
 	if (n < 0) {
 		perror("Couldn't read from socket");
-		return EXIT_FAILURE;
+		RETFAIL(close_fd);
 	}
 
 	printf("%s\n", buffer);
+
+close_fd:
 	close(fd);
-	return EXIT_SUCCESS;
+	return ret;
 }
 
 
