@@ -11,7 +11,7 @@
 #include <pthread.h>
 
 
-static inline int compare(const FTSENT** a, const FTSENT** b)
+static inline int compare(const FTSENT** const a, const FTSENT** const b)
 {
 	return strcmp((*a)->fts_name, (*b)->fts_name);
 }
@@ -48,16 +48,28 @@ static inline int stfind(char* const rootdir, const char* const target)
 
 
 
-static inline void th_parse(const char* const target, const FTSENT* child, const int begin, const int end)
+static inline void parsen(const char* const target, const FTSENT* child, const int begin, const int end)
 {
-	for (int i = 0; i < begin; ++i)
+	int i;
+	for (i = 0; i < begin; ++i)
 		child = child->fts_link;
 
-	for (int i = 0; i < end; ++i) {
+	for (; i < end; ++i) {
 		if (strcmp(target, child->fts_name) == 0)
 			printf("FOUND: %s%s\n", child->fts_parent->fts_path, child->fts_name);
 		child = child->fts_link;
 	}
+}
+
+
+static inline void* th_parsen(void* p)
+{
+	const int b = *((int*) *((void**)p));
+	const int e = *((int*) *(((void**)p) + 1));
+	const char* const target = *(((void**)p) + 2);
+	const FTSENT* const child = *(((void**)p) + 3);
+	parsen(target, child, b, e);
+	return NULL;
 }
 
 
@@ -75,19 +87,31 @@ static inline int mtfind(char* const rootdir, const char* const target)
 	}
 
 	const FTSENT* parent;
+	pthread_t t1;
+	int b, e;
+	void* th_args[] = { &b, &e, (void*) target, NULL };
 
 	while ((parent = fts_read(ftsp)) != NULL) {
 		if (parent->fts_info != FTS_D)
 			continue;
 
-		printf("SCANNING %s\n LINKS %lu\n", parent->fts_path, parent->fts_statp->st_nlink);
+		//printf("SCANNING %s\n LINKS %lu\n", parent->fts_path, parent->fts_statp->st_nlink);
 		const FTSENT* const child = fts_children(ftsp, FTS_NAMEONLY);
 		
 		int i = 0;
 		for (const FTSENT* p = child; p != NULL; p = p->fts_link)
 		       ++i;
 		
-		th_parse(target, child, 0, i);
+		if (i > 150) {
+			b = i / 2;
+			e = i;
+			th_args[3] = (void*) child;
+			pthread_create(&t1, NULL, &th_parsen, th_args);
+			parsen(target, child, 0, i / 2);
+			pthread_join(t1, NULL);
+		} else {
+			parsen(target, child, 0, i);
+		}
 	}
 
 	fts_close(ftsp);
