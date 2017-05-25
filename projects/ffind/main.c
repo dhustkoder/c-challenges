@@ -82,9 +82,11 @@ static inline int mtfind(char* const rootdir, const char* const target)
 
 		printf("SCANNING %s\n LINKS %lu\n", parent->fts_path, parent->fts_statp->st_nlink);
 		const FTSENT* const child = fts_children(ftsp, FTS_NAMEONLY);
+		
 		int i = 0;
 		for (const FTSENT* p = child; p != NULL; p = p->fts_link)
-		       ++i;	
+		       ++i;
+		
 		th_parse(target, child, 0, i);
 	}
 
