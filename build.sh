@@ -1,7 +1,8 @@
 #!/bin/bash
 ROOT_DIR=$(dirname "$0")
-PROJECTS="${ROOT_DIR}/projects/*"
+PROJECTS=("${ROOT_DIR}/projects/ffind" 
 BUILD_DIR="${ROOT_DIR}/build"
+
 
 mkdir -p $BUILD_DIR
 
@@ -10,9 +11,10 @@ if [[ "${CC}" == "" ]]; then
 fi
 
 
-CFLAGS="-std=c11 -Wall -Wextra -lpthread"
-CFLAGS_DEBUG="-O0 -ggdb -fsanitize=address"
+CFLAGS="-std=c11 -Wall -Wextra -I ${ROOT_DIR}/projects -lpthread"
+CFLAGS_DEBUG="-O0 -ggdb -fsanitize=address -DDEBUG_"
 CFLAGS_RELEASE="-O3 -s"
+
 
 if [[ $1 == "release" ]]; then
 	CFLAGS="${CFLAGS} ${CFLAGS_RELEASE}"
@@ -24,3 +26,4 @@ for proj in ${PROJECTS}; do
 	echo "${CC} ${CFLAGS} ${proj}/*.c -o ${BUILD_DIR}/${proj}"
 	$CC $CFLAGS $proj/*.c -o $BUILD_DIR/$(basename $proj)
 done
+

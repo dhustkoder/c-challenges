@@ -11,6 +11,21 @@
 #include <pthread.h>
 
 
+static inline int strcomp(const char* a, const char* b)
+{
+	while (*a == *b) {
+		if (*a == '\0' || *b == '\0')
+			break;
+		++a;
+		++b;
+	}
+
+	if (*a != *b)
+		return 1;	
+	return 0;
+}
+
+
 static inline int compare(const FTSENT** const a, const FTSENT** const b)
 {
 	return strcmp((*a)->fts_name, (*b)->fts_name);
@@ -38,7 +53,7 @@ static inline int stfind(char* const rootdir, const char* const target)
 
 		const FTSENT* child = fts_children(ftsp, 0);
 		for ( ; child != NULL; child = child->fts_link)
-			if (strcmp(child->fts_name, target) == 0)
+			if (strcomp(child->fts_name, target) == 0)
 				printf("%s/%s\n", parent->fts_path, child->fts_name);
 	}
 
@@ -55,7 +70,7 @@ static inline void parsen(const char* const target, const FTSENT* child, const i
 		child = child->fts_link;
 
 	for (; i < end; ++i) {
-		if (strcmp(target, child->fts_name) == 0)
+		if (strcomp(target, child->fts_name) == 0)
 			printf("FOUND: %s%s\n", child->fts_parent->fts_path, child->fts_name);
 		child = child->fts_link;
 	}
@@ -126,6 +141,6 @@ int main(const int argc, char* const* argv)
 		return EXIT_FAILURE;
 	}
 
-	return mtfind(argv[1], argv[2]);
+	return stfind(argv[1], argv[2]);
 }
 
