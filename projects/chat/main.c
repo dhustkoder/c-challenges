@@ -14,10 +14,40 @@
 #define RETFAIL(label) do { ret = EXIT_FAILURE; goto label; } while (0)
 
 
-const int kPort = 7171;
-
-
+static const int kPort = 7171;
+static const int kNickSize = 24;
+static const int kBufferSize = 512;
 static char buffer[512] = { 0 };
+static char localnick[24];
+static char remotenick[24];
+
+
+static inline int exchangeServer(const int fd, const void* const send, void* const recieve, const int size)
+{
+	if (write(fd, send, size) < 0 || read(fd, recieve, size) < 0) {
+		perror("Exchange failed");
+		return 1;
+	}
+	return 0;
+}
+
+
+static inline int exchangeClient(const int fd, const void* const send, void* const recieve, const int size)
+{
+	if (read(fd, recieve, size) < 0 || write(fd, send, size) < 0) {
+		perror("Exchange failed");
+		return 1;
+	}
+	return 0;
+}
+
+
+static inline void getlocalnick(void)
+{
+	printf("Enter Your Nick: ");
+	fgets(localnick, sizeof(localnick) - 1, stdin);
+	localnick[strlen(localnick) - 1] = '\0';
+}
 
 
 static int server(void)
@@ -27,7 +57,9 @@ static int server(void)
 	struct sockaddr_in servaddr, cliaddr;
 	int ret;
 
+	getlocalnick();
 	fd = socket(AF_INET, SOCK_STREAM, 0);
+
 	if (fd < 0) {
 		perror("Couldn't open socket");
 		return EXIT_FAILURE;
@@ -54,6 +86,8 @@ static int server(void)
 		RETFAIL(close_fd);
 	}
 
+	exchangeServer(newfd, localnick, remotenick, kNickSize);
+
 	n = read(newfd, buffer, sizeof(buffer) - 1);
 
 	if (n < 0) {
@@ -61,7 +95,7 @@ static int server(void)
 		RETFAIL(close_newfd);
 	}
 
-	printf("MSG: %s", buffer);
+	printf("%s says: %s", remotenick, buffer);
 
 	n = write(newfd, "Got Your Message!", 17);
 
@@ -87,7 +121,9 @@ static int client(void)
 	struct hostent *server;
 	int ret;
 
+	getlocalnick();
 	fd = socket(AF_INET, SOCK_STREAM, 0);
+
 	if (fd < 0) {
 		perror("Couldn't opening socket");
 		return EXIT_FAILURE;
@@ -109,26 +145,28 @@ static int client(void)
 		RETFAIL(close_fd);
 	}
 
-	printf("Please enter the message: ");
-	bzero(buffer,sizeof(buffer));
-	fgets(buffer,sizeof(buffer) - 1,stdin);
+	exchangeClient(fd, localnick, remotenick, kNickSize);
 
-	n = write(fd,buffer,strlen(buffer));
+	printf("Please enter the message: ");
+	bzero(buffer, kBufferSize);
+	fgets(buffer, kBufferSize - 1,stdin);
+
+	n = write(fd, buffer, strlen(buffer));
 
 	if (n < 0)  {
 		perror("Couldn't write to socket");
 		RETFAIL(close_fd);
 	}
 
-	bzero(buffer, 256);
-	n = read(fd, buffer, sizeof(buffer) - 1);
+	bzero(buffer, kBufferSize);
+	n = read(fd, buffer, kBufferSize - 1);
 
 	if (n < 0) {
 		perror("Couldn't read from socket");
 		RETFAIL(close_fd);
 	}
 
-	printf("%s\n", buffer);
+	printf("%s says: %s\n", remotenick, buffer);
 	ret = EXIT_SUCCESS;
 close_fd:
 	close(fd);
