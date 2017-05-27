@@ -19,9 +19,9 @@
 static const int kPort = 7171;
 static const int kNickSize = 24;
 static const int kBufferSize = 512;
-static char buffer[512] = { 0 };
-static char localnick[24];
-static char remotenick[24];
+static char buffer[512] = { '\0' };
+static char localnick[24] = { '\0' };
+static char remotenick[24] = { '\0' };
 
 
 static inline void clearscr(void)
@@ -30,35 +30,17 @@ static inline void clearscr(void)
 }
 
 
-static inline int sendMsg(const int fd, const char* const msg)
+static inline bool readIntoBuffer(const int fd)
 {
-	return write(fd, msg, strlen(msg));
-}
-
-
-static inline int recieveMsg(const int fd)
-{
-	return read(fd, buffer, kBufferSize - 1);
-}
-
-
-static inline int exchangeServer(const int fd, const void* const send, void* const recieve, const int size)
-{
-	if (write(fd, send, size) < 0 || read(fd, recieve, size) < 0) {
-		perror("Exchange failed");
-		return 1;
+	int n;
+	if ((n = read(fd, buffer, kBufferSize - 1))) {
+		if (buffer[n - 1] == '\n')
+			buffer[n - 1] = '\0';
+		else
+			buffer[n] = '\0';
+		return true;
 	}
-	return 0;
-}
-
-
-static inline int exchangeClient(const int fd, const void* const send, void* const recieve, const int size)
-{
-	if (read(fd, recieve, size) < 0 || write(fd, send, size) < 0) {
-		perror("Exchange failed");
-		return 1;
-	}
-	return 0;
+	return false;
 }
 
 
@@ -70,61 +52,55 @@ static inline void getLocalNick(void)
 }
 
 
-static inline void* th_stdinUpdater(void* const p)
+static inline bool waitForDataBy(const int fd, const long usecs)
 {
-	volatile bool* const notify = *((void**)p);
-	volatile bool* const terminate =  *(((void**)p) + 1);
+	struct timeval timeout = { 0, usecs };
+	fd_set fds;
+	
+	FD_ZERO(&fds);
+	FD_SET(fd, &fds);
+		
+	if (select(fd + 1, &fds, NULL, NULL, &timeout))
+		return true;
 
-	while (!(*terminate)) {
-		struct timeval timeout =  { 1, 0 };
-		fd_set fdss[3];
-
-		for (int i = 0; i < 3; ++i)
-			FD_ZERO(&fdss[i]);
-
-		FD_SET(STDIN_FILENO, &fdss[0]);
-
-		if (select(STDIN_FILENO + 1, &fdss[0], &fdss[1], &fdss[2], &timeout)) {
-			printf("READING NEW INPUT\n");
-			buffer[read(STDIN_FILENO, buffer, kBufferSize - 1) - 1] = '\0';
-			*notify = true;
-			while (*notify)
-				usleep(1000 * 500);
-		}
-	}
-
-	return NULL;
+	return false;
 }
 
 
-static inline int chat(void)
+static inline int chat(const int fd)
 {
-	volatile bool notify = false;
-	volatile bool terminate = false;
-	volatile void* thargs[] = { &notify, &terminate };
-	pthread_t th;
-	pthread_create(&th, NULL, &th_stdinUpdater, (void*) thargs);
-
+	const int usecs = 1000 * 50;
+	const char* nick;
 	for (;;) {
-		if (notify) {
-			printf("NEW INPUT: %s\nLEN: %d\n", buffer, strlen(buffer));
-			if (strlen(buffer) == 1 && buffer[0] == 'q') {
-				printf("QUITTING\n");
-				notify = false;
-				break;
+		if (waitForDataBy(STDIN_FILENO, usecs)) {
+			if (!readIntoBuffer(STDIN_FILENO)) {
+				perror("Couldn't read stdin");
+				return EXIT_FAILURE;
 			}
-			bzero(buffer, kBufferSize);
-			notify = false;
+			write(fd, buffer, strlen(buffer));
+			nick = localnick;
+		} else if (waitForDataBy(fd, usecs)) {
+			if (!readIntoBuffer(fd)) {
+				perror("Couldn't read msg");
+				return EXIT_FAILURE;
+			}
+			nick = remotenick;
+		} else {
+			continue;
 		}
-	}
 
-	terminate = true;
-	pthread_join(th, NULL);
+		if (strcmp(buffer, "/quit") == 0) {
+			puts("Connection ended.");
+			break;
+		}
+		
+		printf("%s says: %s\n", nick, buffer);
+	}
 	return EXIT_SUCCESS;
 }
 
 
-static int server(void)
+static inline int server(void)
 {
 	int fd, newfd;
 	struct sockaddr_in servaddr, cliaddr;
@@ -160,21 +136,13 @@ static int server(void)
 		RETFAIL(close_fd);
 	}
 
-	exchangeServer(newfd, localnick, remotenick, kNickSize);
-
-	if (recieveMsg(newfd) < 0) {
-		perror("Couldn't read message");
+	if (write(newfd, localnick, kNickSize) < 0 ||
+	    read(newfd, remotenick, kNickSize) < 0) {
+		perror("Nicks exchange failed");
 		RETFAIL(close_newfd);
 	}
-
-	printf("%s says: %s", remotenick, buffer);
-
-	if (sendMsg(newfd, "Got Your Message!") < 0) {
-		perror("Couldn't write message");
-		RETFAIL(close_newfd);
-	}
-
-	ret = EXIT_SUCCESS;
+	
+	ret = chat(newfd);
 
 close_newfd:
 	close(newfd);
@@ -184,7 +152,7 @@ close_fd:
 }
 
 
-static int client(void)
+static inline int client(void)
 {
 	int fd;
 	struct sockaddr_in servaddr;
@@ -215,48 +183,30 @@ static int client(void)
 		RETFAIL(close_fd);
 	}
 
-	exchangeClient(fd, localnick, remotenick, kNickSize);
-
-	printf("Please enter the message: ");
-	fgets(buffer, kBufferSize - 1,stdin);
-
-	if (sendMsg(fd, buffer) < 0)  {
-		perror("Couldn't write to socket");
+	if (read(fd, remotenick, kNickSize) < 0 ||
+	    write(fd, localnick, kNickSize) < 0) {
+		perror("Nicks exchange failed");
 		RETFAIL(close_fd);
 	}
 
-	if (recieveMsg(fd) < 0) {
-		perror("Couldn't read from socket");
-		RETFAIL(close_fd);
-	}
+	ret = chat(fd);
 
-	printf("%s says: %s\n", remotenick, buffer);
-
-	ret = EXIT_SUCCESS;
 close_fd:
 	close(fd);
 	return ret;
 }
 
 
-static void printusage(const char* argv_0)
-{
-	fprintf(stderr, "Usage: %s [type: server, client]\n", argv_0);
-}
-
-
 int main(int argc, char** argv)
 {
 	if (argc > 1) {
-//		if (strcmp(argv[1], "client") == 0)
-//			return client();
-//		else if (strcmp(argv[1], "server") == 0)
-//			return server();
-
-		chat();
+		if (strcmp(argv[1], "client") == 0)
+			return client();
+		else if (strcmp(argv[1], "server") == 0)
+			return server();
 	}
 
-	printusage(argv[0]);
+	fprintf(stderr, "Usage: %s [type: server, client]\n", argv[0]);
 	return EXIT_FAILURE;
 }
 
