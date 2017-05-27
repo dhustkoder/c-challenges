@@ -1,11 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include <unistd.h>
+#include <pthread.h>
 #include <strings.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/select.h>
 #include <netinet/in.h>
 #include <netdb.h>
 
@@ -19,6 +22,12 @@ static const int kBufferSize = 512;
 static char buffer[512] = { 0 };
 static char localnick[24];
 static char remotenick[24];
+
+
+static inline void clearscr(void)
+{
+	system("clear");
+}
 
 
 static inline int sendMsg(const int fd, const char* const msg)
@@ -53,11 +62,65 @@ static inline int exchangeClient(const int fd, const void* const send, void* con
 }
 
 
-static inline void getlocalnick(void)
+static inline void getLocalNick(void)
 {
 	printf("Enter Your Nick: ");
 	fgets(localnick, sizeof(localnick) - 1, stdin);
 	localnick[strlen(localnick) - 1] = '\0';
+}
+
+
+static inline void* th_stdinUpdater(void* const p)
+{
+	volatile bool* const notify = *((void**)p);
+	volatile bool* const terminate =  *(((void**)p) + 1);
+
+	while (!(*terminate)) {
+		struct timeval timeout =  { 1, 0 };
+		fd_set fdss[3];
+
+		for (int i = 0; i < 3; ++i)
+			FD_ZERO(&fdss[i]);
+
+		FD_SET(STDIN_FILENO, &fdss[0]);
+
+		if (select(STDIN_FILENO + 1, &fdss[0], &fdss[1], &fdss[2], &timeout)) {
+			printf("READING NEW INPUT\n");
+			buffer[read(STDIN_FILENO, buffer, kBufferSize - 1) - 1] = '\0';
+			*notify = true;
+			while (*notify)
+				usleep(1000 * 500);
+		}
+	}
+
+	return NULL;
+}
+
+
+static inline int chat(void)
+{
+	volatile bool notify = false;
+	volatile bool terminate = false;
+	volatile void* thargs[] = { &notify, &terminate };
+	pthread_t th;
+	pthread_create(&th, NULL, &th_stdinUpdater, (void*) thargs);
+
+	for (;;) {
+		if (notify) {
+			printf("NEW INPUT: %s\nLEN: %d\n", buffer, strlen(buffer));
+			if (strlen(buffer) == 1 && buffer[0] == 'q') {
+				printf("QUITTING\n");
+				notify = false;
+				break;
+			}
+			bzero(buffer, kBufferSize);
+			notify = false;
+		}
+	}
+
+	terminate = true;
+	pthread_join(th, NULL);
+	return EXIT_SUCCESS;
 }
 
 
@@ -68,7 +131,7 @@ static int server(void)
 	socklen_t clilen = sizeof(cliaddr);
 	int ret;
 
-	getlocalnick();
+	getLocalNick();
 	fd = socket(AF_INET, SOCK_STREAM, 0);
 
 	if (fd < 0) {
@@ -89,6 +152,7 @@ static int server(void)
 	}
 
 	listen(fd, 5);
+	puts("Waiting for client...");
 	newfd = accept(fd, (struct sockaddr*) &cliaddr, &clilen);
 
 	if (newfd < 0) {
@@ -127,7 +191,7 @@ static int client(void)
 	struct hostent *server;
 	int ret;
 
-	getlocalnick();
+	getLocalNick();
 	fd = socket(AF_INET, SOCK_STREAM, 0);
 
 	if (fd < 0) {
@@ -184,13 +248,16 @@ static void printusage(const char* argv_0)
 int main(int argc, char** argv)
 {
 	if (argc > 1) {
-		if (strcmp(argv[1], "client") == 0)
-			return client();
-		else if (strcmp(argv[1], "server") == 0)
-			return server();
+//		if (strcmp(argv[1], "client") == 0)
+//			return client();
+//		else if (strcmp(argv[1], "server") == 0)
+//			return server();
+
+		chat();
 	}
 
 	printusage(argv[0]);
 	return EXIT_FAILURE;
 }
+
 
