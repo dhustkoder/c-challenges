@@ -5,7 +5,6 @@
 
 #include <unistd.h>
 #include <pthread.h>
-#include <strings.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/select.h>
@@ -15,13 +14,34 @@
 
 #define RETFAIL(label) do { ret = EXIT_FAILURE; goto label; } while (0)
 
-
+enum ConMode { MODE_SERVER, MODE_CLIENT };
 static const int kPort = 7171;
 static const int kNickSize = 24;
 static const int kBufferSize = 512;
 static char buffer[512] = { '\0' };
 static char localnick[24] = { '\0' };
 static char remotenick[24] = { '\0' };
+
+
+static inline bool exchangeNicks(enum ConMode mode, const int fd)
+{
+	bool ret = true;
+
+	if (mode == MODE_SERVER) {
+		if (write(fd, localnick, kNickSize) < 0 ||
+		    read(fd, remotenick, kNickSize) < 0)
+			ret = false;
+	} else {
+		if (read(fd, remotenick, kNickSize) < 0 ||
+		    write(fd, localnick, kNickSize) < 0)
+			ret = false;
+	}
+
+	if (ret == false)
+		perror("Couldn't exchange nicks");
+
+	return ret;
+}
 
 
 static inline void clearscr(void)
@@ -102,13 +122,10 @@ static inline int chat(const int fd)
 
 static inline int server(void)
 {
-	int fd, newfd;
-	struct sockaddr_in servaddr, cliaddr;
-	socklen_t clilen = sizeof(cliaddr);
 	int ret;
 
 	getLocalNick();
-	fd = socket(AF_INET, SOCK_STREAM, 0);
+	const int fd = socket(AF_INET, SOCK_STREAM, 0);
 
 	if (fd < 0) {
 		perror("Couldn't open socket");
@@ -117,31 +134,33 @@ static inline int server(void)
 
 	const int optionval = 1;
 	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &optionval, sizeof(int));
-	bzero(&servaddr, sizeof(servaddr));
+
+	struct sockaddr_in servaddr;
+	memset(&servaddr, 0, sizeof(servaddr));
 	servaddr.sin_family = AF_INET;
 	servaddr.sin_addr.s_addr = INADDR_ANY;
 	servaddr.sin_port = htons(kPort);
 
-	if (bind(fd, (struct sockaddr*) &servaddr, sizeof(servaddr)) < 0) {
+	if (bind(fd, (struct sockaddr*)&servaddr, sizeof(servaddr)) < 0) {
 		perror("Couldn't bind");
 		RETFAIL(close_fd);
 	}
 
 	listen(fd, 5);
 	puts("Waiting for client...");
-	newfd = accept(fd, (struct sockaddr*) &cliaddr, &clilen);
+
+	struct sockaddr_in cliaddr;
+	unsigned int clilen = sizeof(cliaddr);
+	const int newfd = accept(fd, (struct sockaddr*)&cliaddr, &clilen);
 
 	if (newfd < 0) {
 		perror("Couldn't accept socket");
 		RETFAIL(close_fd);
 	}
 
-	if (write(newfd, localnick, kNickSize) < 0 ||
-	    read(newfd, remotenick, kNickSize) < 0) {
-		perror("Nicks exchange failed");
+	if (!exchangeNicks(MODE_SERVER, newfd))
 		RETFAIL(close_newfd);
-	}
-	
+
 	ret = chat(newfd);
 
 close_newfd:
@@ -154,28 +173,26 @@ close_fd:
 
 static inline int client(void)
 {
-	int fd;
-	struct sockaddr_in servaddr;
-	struct hostent *server;
 	int ret;
 
 	getLocalNick();
-	fd = socket(AF_INET, SOCK_STREAM, 0);
+	const int fd = socket(AF_INET, SOCK_STREAM, 0);
 
 	if (fd < 0) {
 		perror("Couldn't opening socket");
 		return EXIT_FAILURE;
 	}
 
-	server = gethostbyname("localhost");
+	struct hostent* const server = gethostbyname("localhost");
 	if (server == NULL) {
 		perror("Couldn't find host");
 		RETFAIL(close_fd);
 	}
 
-	bzero(&servaddr, sizeof(servaddr));
+	struct sockaddr_in servaddr;
+	memset(&servaddr, 0, sizeof(servaddr));
 	servaddr.sin_family = AF_INET;
-	bcopy(server->h_addr_list[0], (char *)&servaddr.sin_addr.s_addr, server->h_length);
+	memcpy(server->h_addr_list[0], &servaddr.sin_addr.s_addr, server->h_length);
 	servaddr.sin_port = htons(kPort);
 
 	if (connect(fd, (struct sockaddr *) &servaddr, sizeof(servaddr)) < 0) {
@@ -183,11 +200,8 @@ static inline int client(void)
 		RETFAIL(close_fd);
 	}
 
-	if (read(fd, remotenick, kNickSize) < 0 ||
-	    write(fd, localnick, kNickSize) < 0) {
-		perror("Nicks exchange failed");
+	if (!exchangeNicks(MODE_CLIENT, fd))
 		RETFAIL(close_fd);
-	}
 
 	ret = chat(fd);
 
