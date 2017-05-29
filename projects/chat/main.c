@@ -14,13 +14,44 @@
 
 #define RETFAIL(label) do { ret = EXIT_FAILURE; goto label; } while (0)
 
+
 enum ConMode { MODE_SERVER, MODE_CLIENT };
 static const int kPort = 7171;
 static const int kNickSize = 24;
+//static const int kChatStackSize = 24;
 static const int kBufferSize = 512;
 static char buffer[512] = { '\0' };
+//static char* chatstack[24] = { NULL };
+//static int chatstack_idx = 0;
 static char localnick[24] = { '\0' };
 static char remotenick[24] = { '\0' };
+
+
+static inline bool readIntoBuffer(const int fd)
+{
+	int n;
+	if ((n = read(fd, buffer, kBufferSize - 1)) <= 0) {
+		perror("read");
+		return false;
+	}
+
+	if (buffer[n - 1] == '\n')
+		buffer[n - 1] = '\0';
+	else
+		buffer[n] = '\0';
+
+	return true;
+}
+
+
+static inline bool writeFromBuffer(const int fd)
+{
+	if (write(fd, buffer, strlen(buffer)) <= 0) {
+		perror("write");
+		return false;
+	}
+	return true;
+}
 
 
 static inline bool exchangeNicks(enum ConMode mode, const int fd)
@@ -43,26 +74,12 @@ static inline bool exchangeNicks(enum ConMode mode, const int fd)
 	return ret;
 }
 
-
+/*
 static inline void clearscr(void)
 {
 	system("clear");
 }
-
-
-static inline bool readIntoBuffer(const int fd)
-{
-	int n;
-	if ((n = read(fd, buffer, kBufferSize - 1))) {
-		if (buffer[n - 1] == '\n')
-			buffer[n - 1] = '\0';
-		else
-			buffer[n] = '\0';
-		return true;
-	}
-	return false;
-}
-
+*/
 
 static inline void getLocalNick(void)
 {
@@ -72,50 +89,78 @@ static inline void getLocalNick(void)
 }
 
 
-static inline bool waitForDataBy(const int fd, const long usecs)
+static inline int waitDataBy(const int fd1, const int fd2, const long usecs)
 {
+	const int fdmax = fd1 > fd2 ? fd1 : fd2;
 	struct timeval timeout = { 0, usecs };
 	fd_set fds;
-	
-	FD_ZERO(&fds);
-	FD_SET(fd, &fds);
-		
-	if (select(fd + 1, &fds, NULL, NULL, &timeout))
-		return true;
 
-	return false;
+	FD_ZERO(&fds);
+	FD_SET(fd1, &fds);
+	FD_SET(fd2, &fds);
+
+	int r = select(fdmax + 1, &fds, NULL, NULL, &timeout);
+
+	if (r > 0)
+		r = FD_ISSET(fd1, &fds) ? 1 : 2;
+	else if (r == -1)
+		perror("Failed to wait data");
+
+	return r;
 }
 
+/*
+static inline bool stackmsg(const char* const msg)
+{
+	if (chatstack_idx >= kChatStackSize) {
+		free((void*)chatstack[0]);
+		memmove(&chatstack[0], &chatstack[1], kChatStackSize - 2);
+		chatstack_idx = kChatStackSize - 1;
+	}
 
-static inline int chat(const int fd)
+	const int len = strlen(msg);
+	chatstack[chatstack_idx] = malloc(len + 1);
+	strcpy(&chatstack[chatstack_idx], msg);
+	++chatstack_idx;
+	return true;
+}
+*/
+
+static inline int chat(const int confd)
 {
 	const int usecs = 1000 * 50;
 	const char* nick;
+	int rfd, wfd;
+
 	for (;;) {
-		if (waitForDataBy(STDIN_FILENO, usecs)) {
-			if (!readIntoBuffer(STDIN_FILENO)) {
-				perror("Couldn't read stdin");
-				return EXIT_FAILURE;
-			}
-			write(fd, buffer, strlen(buffer));
+		const int n = waitDataBy(STDIN_FILENO, confd, usecs);
+
+		if (n == 0) {
+			continue;
+		} else if (n == 1) {
+			rfd = STDIN_FILENO;
+			wfd = confd;
 			nick = localnick;
-		} else if (waitForDataBy(fd, usecs)) {
-			if (!readIntoBuffer(fd)) {
-				perror("Couldn't read msg");
-				return EXIT_FAILURE;
-			}
+		} else if (n == 2) {
+			rfd = confd;
+			wfd = -1;
 			nick = remotenick;
 		} else {
-			continue;
+			perror("Error while waiting for data");
+			return EXIT_FAILURE;
 		}
 
+		if (!readIntoBuffer(rfd) || (wfd != -1 && !writeFromBuffer(wfd)))
+			return EXIT_FAILURE;
+		
 		if (strcmp(buffer, "/quit") == 0) {
 			puts("Connection ended.");
 			break;
 		}
-		
+
 		printf("%s says: %s\n", nick, buffer);
 	}
+
 	return EXIT_SUCCESS;
 }
 
