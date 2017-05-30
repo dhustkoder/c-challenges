@@ -109,6 +109,7 @@ static inline int waitDataBy(const int fd1, const int fd2, const long usecs)
 	return r;
 }
 
+
 /*
 static inline bool stackmsg(const char* const msg)
 {
@@ -126,6 +127,7 @@ static inline bool stackmsg(const char* const msg)
 }
 */
 
+
 static inline int chat(const int confd)
 {
 	const int usecs = 1000 * 50;
@@ -135,7 +137,7 @@ static inline int chat(const int confd)
 	for (;;) {
 		const int n = waitDataBy(STDIN_FILENO, confd, usecs);
 
-		if (n == 0) {
+		if (n <= 0) {
 			continue;
 		} else if (n == 1) {
 			rfd = STDIN_FILENO;
@@ -145,9 +147,6 @@ static inline int chat(const int confd)
 			rfd = confd;
 			wfd = -1;
 			nick = remotenick;
-		} else {
-			perror("Error while waiting for data");
-			return EXIT_FAILURE;
 		}
 
 		if (!readIntoBuffer(rfd) || (wfd != -1 && !writeFromBuffer(wfd)))
