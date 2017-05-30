@@ -4,7 +4,6 @@
 #include <stdbool.h>
 
 #include <unistd.h>
-#include <pthread.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/select.h>

@@ -12,7 +12,7 @@ if [[ "${CC}" == "" ]]; then
 fi
 
 
-CFLAGS="-std=c11 -pedantic-errors -Wall -Wextra -I ${ROOT_DIR}/projects -lpthread"
+CFLAGS="-std=c11 -pedantic-errors -Wall -Wextra -I ${ROOT_DIR}/projects"
 CFLAGS_DEBUG="-O0 -ggdb -fsanitize=address -DDEBUG_"
 CFLAGS_RELEASE="-O3 -s"
 
@@ -24,7 +24,6 @@ else
 fi
 
 for proj in ${PROJECTS[@]}; do
-	echo "${CC} ${CFLAGS} ${proj}/*.c -o ${BUILD_DIR}/${proj}"
-	$CC $CFLAGS $proj/*.c -o $BUILD_DIR/$(basename $proj)
+	${proj}/build.sh "${CC}" "${CFLAGS}" "${BUILD_DIR}/$(basename $proj)"
 done
 
