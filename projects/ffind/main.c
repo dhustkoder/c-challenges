@@ -14,22 +14,16 @@
 
 static inline int strcomp(const char* a, const char* b)
 {
-	while (*a == *b) {
+	for (; *a == *b; ++a, ++b)
 		if (*a == '\0' || *b == '\0')
 			break;
-		++a;
-		++b;
-	}
-
-	if (*a != *b)
-		return 1;	
-	return 0;
+	return *a != *b ? 1 : 0;
 }
 
 
 static inline int compare(const FTSENT** const a, const FTSENT** const b)
 {
-	return strcmp((*a)->fts_name, (*b)->fts_name);
+	return strcomp((*a)->fts_name, (*b)->fts_name);
 }
 
 

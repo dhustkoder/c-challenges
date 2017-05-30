@@ -193,7 +193,7 @@ static inline int server(void)
 	puts("Waiting for client...");
 
 	struct sockaddr_in cliaddr;
-	unsigned int clilen = sizeof(cliaddr);
+	socklen_t clilen = sizeof(cliaddr);
 	const int newfd = accept(fd, (struct sockaddr*)&cliaddr, &clilen);
 
 	if (newfd < 0) {
@@ -238,7 +238,7 @@ static inline int client(void)
 	memcpy(server->h_addr_list[0], &servaddr.sin_addr.s_addr, server->h_length);
 	servaddr.sin_port = htons(kPort);
 
-	if (connect(fd, (struct sockaddr *) &servaddr, sizeof(servaddr)) < 0) {
+	if (connect(fd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0) {
 		perror("Couldn't connect");
 		RETFAIL(close_fd);
 	}
