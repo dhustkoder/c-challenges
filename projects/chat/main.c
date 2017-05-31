@@ -194,20 +194,20 @@ static inline int server(void)
 
 	struct sockaddr_in cliaddr;
 	socklen_t clilen = sizeof(cliaddr);
-	const int newfd = accept(fd, (struct sockaddr*)&cliaddr, &clilen);
+	const int clifd = accept(fd, (struct sockaddr*)&cliaddr, &clilen);
 
-	if (newfd < 0) {
+	if (clifd < 0) {
 		perror("Couldn't accept socket");
 		RETFAIL(close_fd);
 	}
 
-	if (!exchangeNicks(MODE_SERVER, newfd))
-		RETFAIL(close_newfd);
+	if (!exchangeNicks(MODE_SERVER, clifd))
+		RETFAIL(close_clifd);
 
-	ret = chat(newfd);
+	ret = chat(clifd);
 
-close_newfd:
-	close(newfd);
+close_clifd:
+	close(clifd);
 close_fd:
 	close(fd);
 	return ret;
