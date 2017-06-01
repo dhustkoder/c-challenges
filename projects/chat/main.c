@@ -15,7 +15,7 @@
 
 
 enum ConMode { MODE_SERVER, MODE_CLIENT };
-static const int kPort = 7171;
+static const unsigned short kPort = 7171;
 static const int kNickSize = 24;
 //static const int kChatStackSize = 24;
 static const int kBufferSize = 512;
@@ -168,47 +168,82 @@ static inline int server(void)
 	int ret;
 
 	getLocalNick();
+	/* socket(), creates an endpoint for communication and returns a
+	 * file descriptor that refers to that endpoint                */
 	const int fd = socket(AF_INET, SOCK_STREAM, 0);
 
-	if (fd < 0) {
+	if (fd == -1) {
 		perror("Couldn't open socket");
 		return EXIT_FAILURE;
 	}
 
+	/* The setsockopt() function shall set the option specified by the
+	 * option_name argument, at the protocol level specified by the level
+	 * argument, t the value pointed to by the option_value argument
+	 * for the socket associated with the file descriptor specified by the socket
+	 * argument
+	 * */
 	const int optionval = 1;
-	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &optionval, sizeof(int));
-
-	struct sockaddr_in servaddr;
-	memset(&servaddr, 0, sizeof(servaddr));
-	servaddr.sin_family = AF_INET;
-	servaddr.sin_addr.s_addr = INADDR_ANY;
-	servaddr.sin_port = htons(kPort);
-
-	if (bind(fd, (struct sockaddr*)&servaddr, sizeof(servaddr)) < 0) {
-		perror("Couldn't bind");
-		RETFAIL(close_fd);
+	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &optionval, sizeof(int)) == -1) {
+		perror("Couldn't set socket opt");
+		RETFAIL(Lclose_fd);
 	}
 
-	listen(fd, 5);
+
+	/* the bind() function shall assign a local socket address to
+	 * a socket indentified by descriptor socket that has no local 
+	 * socket address assigned. Sockets created with socket()
+	 * are initially unnamed; they are identified only by their 
+	 * address family
+	 * */
+	struct sockaddr_in servaddr;
+	memset(&servaddr, 0, sizeof(servaddr));
+	servaddr.sin_family = AF_INET;          // IPv4 protocol
+	servaddr.sin_addr.s_addr = INADDR_ANY;  // bind to any interface
+	servaddr.sin_port = htons(kPort);       /* converts the unsigned short 
+	                                         * int from hostbyte order to
+						 * network byte order
+						 * */
+	if (bind(fd, (struct sockaddr*)&servaddr, sizeof(servaddr)) == -1) {
+		perror("Couldn't bind");
+		RETFAIL(Lclose_fd);
+	}
+
+	/* the listen() function shall mark a connection-mode socket,
+	 * specified by the socket argument, as accepting connections
+	 * */
+	if (listen(fd, 1) == -1) {
+		perror("Couldn't set listen");
+		RETFAIL(Lclose_fd);
+	}
+
 	puts("Waiting for client...");
 
 	struct sockaddr_in cliaddr;
 	socklen_t clilen = sizeof(cliaddr);
+
+	/* the accept() system call is used with connection-based socket types
+	 * (SOCK_STREAM, SOCK_SEQPACKET). It extracts the first connection 
+	 * request on the queue of pending connections for the listening socket,
+	 * sockfd, creates a new connected socket, and returns a new file
+	 * descriptor referring to that socket. The newly created socket is not
+	 * listening state. The original socket sockfd is unaffected by this call
+	 * */
 	const int clifd = accept(fd, (struct sockaddr*)&cliaddr, &clilen);
 
-	if (clifd < 0) {
+	if (clifd == -1) {
 		perror("Couldn't accept socket");
-		RETFAIL(close_fd);
+		RETFAIL(Lclose_fd);
 	}
 
 	if (!exchangeNicks(MODE_SERVER, clifd))
-		RETFAIL(close_clifd);
+		RETFAIL(Lclose_clifd);
 
 	ret = chat(clifd);
 
-close_clifd:
+Lclose_clifd:
 	close(clifd);
-close_fd:
+Lclose_fd:
 	close(fd);
 	return ret;
 }
@@ -221,34 +256,41 @@ static inline int client(void)
 	getLocalNick();
 	const int fd = socket(AF_INET, SOCK_STREAM, 0);
 
-	if (fd < 0) {
-		perror("Couldn't opening socket");
+	if (fd == -1) {
+		perror("Couldn't open socket");
 		return EXIT_FAILURE;
 	}
 
-	struct hostent* const server = gethostbyname("localhost");
-	if (server == NULL) {
-		perror("Couldn't find host");
-		RETFAIL(close_fd);
+	/* The gethostbyname() function returns a struct of type hostent
+	 * for the given host name. Here name is either a hostname or an
+	 * IPv4 address.
+	 * */
+	struct hostent *hostent = gethostbyname("localhost");
+	if (hostent == NULL) {
+		perror("Couldn't get host by name");
+		RETFAIL(Lclose_fd);
 	}
 
-	struct sockaddr_in servaddr;
-	memset(&servaddr, 0, sizeof(servaddr));
-	servaddr.sin_family = AF_INET;
-	memcpy(server->h_addr_list[0], &servaddr.sin_addr.s_addr, server->h_length);
-	servaddr.sin_port = htons(kPort);
-
-	if (connect(fd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0) {
+	/* The connect() function shall attempt to make a connection on a 
+	 * mode socket or to set or reset the peer address of a connectionless
+	 * mode socket.
+	 * */
+	struct sockaddr_in hostaddr;
+	memset(&hostaddr, 0, sizeof(hostaddr));
+	hostaddr.sin_family = AF_INET;
+	hostaddr.sin_port = htons(kPort);
+	memcpy(hostent->h_addr_list, &hostaddr.sin_addr.s_addr, hostent->h_length);
+	if (connect(fd, (struct sockaddr*)&hostaddr, sizeof(hostaddr)) == -1) {
 		perror("Couldn't connect");
-		RETFAIL(close_fd);
+		RETFAIL(Lclose_fd);
 	}
 
 	if (!exchangeNicks(MODE_CLIENT, fd))
-		RETFAIL(close_fd);
+		RETFAIL(Lclose_fd);
 
 	ret = chat(fd);
 
-close_fd:
+Lclose_fd:
 	close(fd);
 	return ret;
 }
