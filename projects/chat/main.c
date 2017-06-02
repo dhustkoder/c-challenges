@@ -14,14 +14,14 @@
 #define RETFAIL(label) do { ret = EXIT_FAILURE; goto label; } while (0)
 
 
-enum ConMode { MODE_SERVER, MODE_CLIENT };
+static enum ConMode { CONMODE_HOST, CONMODE_CLIENT } conmode;
 static const unsigned short kPort = 7171;
 static const int kNickSize = 24;
-//static const int kChatStackSize = 24;
+static const int kChatStackSize = 24;
 static const int kBufferSize = 512;
 static char buffer[512] = { '\0' };
-//static char* chatstack[24] = { NULL };
-//static int chatstack_idx = 0;
+static char* chatstack[24] = { NULL };
+static int chatstack_idx = 0;
 static char localnick[24] = { '\0' };
 static char remotenick[24] = { '\0' };
 
@@ -53,11 +53,11 @@ static inline bool writeFromBuffer(const int fd)
 }
 
 
-static inline bool exchangeNicks(enum ConMode mode, const int fd)
+static inline bool exchangeNicks(const int fd)
 {
 	bool ret = true;
 
-	if (mode == MODE_SERVER) {
+	if (conmode == CONMODE_HOST) {
 		if (write(fd, localnick, kNickSize) < 0 ||
 		    read(fd, remotenick, kNickSize) < 0)
 			ret = false;
@@ -73,12 +73,12 @@ static inline bool exchangeNicks(enum ConMode mode, const int fd)
 	return ret;
 }
 
-/*
+
 static inline void clearscr(void)
 {
 	system("clear");
 }
-*/
+
 
 static inline void getLocalNick(void)
 {
@@ -109,22 +109,45 @@ static inline int waitDataBy(const int fd1, const int fd2, const long usecs)
 }
 
 
-/*
-static inline bool stackmsg(const char* const msg)
+static inline bool stackmsg(const char* const nick, const char* const msg)
 {
 	if (chatstack_idx >= kChatStackSize) {
-		free((void*)chatstack[0]);
-		memmove(&chatstack[0], &chatstack[1], kChatStackSize - 2);
+		free(chatstack[0]);
+		for (int i = 0; i < chatstack_idx - 1; ++i)
+			chatstack[i] = chatstack[i + 1];
 		chatstack_idx = kChatStackSize - 1;
 	}
 
-	const int len = strlen(msg);
+	const int len = strlen(msg) + strlen(nick) + 3;
 	chatstack[chatstack_idx] = malloc(len + 1);
-	strcpy(&chatstack[chatstack_idx], msg);
+	sprintf(chatstack[chatstack_idx], "%s: %s", nick, msg);
 	++chatstack_idx;
 	return true;
 }
-*/
+
+
+static inline void freemsgstack(void)
+{
+	for (int i = 0; i < chatstack_idx; ++i)
+		free(chatstack[i]);
+}
+
+
+static inline void printchat(void)
+{
+	printf("Host: %s. Client: %s\n",
+	       conmode == CONMODE_HOST ? localnick : remotenick,
+	       conmode == CONMODE_CLIENT ? localnick : remotenick);
+
+	int i;
+	for (i = 0; i < chatstack_idx; ++i)
+		puts(chatstack[i]);
+	for (; i < kChatStackSize; ++i)
+		printf("\n");
+
+	printf("===============================================\n> ");
+	fflush(stdout);
+}
 
 
 static inline int chat(const int confd)
@@ -133,9 +156,11 @@ static inline int chat(const int confd)
 	const char* nick;
 	int rfd, wfd;
 
+	clearscr();
+	printchat();
+
 	for (;;) {
 		const int n = waitDataBy(STDIN_FILENO, confd, usecs);
-
 		if (n <= 0) {
 			continue;
 		} else if (n == 1) {
@@ -150,23 +175,35 @@ static inline int chat(const int confd)
 
 		if (!readIntoBuffer(rfd) || (wfd != -1 && !writeFromBuffer(wfd)))
 			return EXIT_FAILURE;
-		
-		if (strcmp(buffer, "/quit") == 0) {
-			puts("Connection ended.");
-			break;
+
+		if (buffer[0] == '/') {	
+			if (strcmp(buffer, "/quit") == 0) {
+				if (rfd == confd)
+					printf("\nConnection closed by %s.\n", remotenick);
+				else
+					printf("Connection closed.\n");
+				break;
+			} else {
+				if (rfd == STDIN_FILENO)
+					printf("Unknown command %s\n", buffer);
+				continue;
+			}
 		}
 
-		printf("%s says: %s\n", nick, buffer);
+		stackmsg(nick, buffer);
+		clearscr();
+		printchat();
 	}
 
+	freemsgstack();
 	return EXIT_SUCCESS;
 }
 
 
-static inline int server(void)
+static inline int host(void)
 {
 	int ret;
-
+	conmode = CONMODE_HOST;
 	getLocalNick();
 	/* socket(), creates an endpoint for communication and returns a
 	 * file descriptor that refers to that endpoint                */
@@ -236,7 +273,7 @@ static inline int server(void)
 		RETFAIL(Lclose_fd);
 	}
 
-	if (!exchangeNicks(MODE_SERVER, clifd))
+	if (!exchangeNicks(clifd))
 		RETFAIL(Lclose_clifd);
 
 	ret = chat(clifd);
@@ -252,7 +289,7 @@ Lclose_fd:
 static inline int client(void)
 {
 	int ret;
-
+	conmode = CONMODE_CLIENT;
 	getLocalNick();
 	const int fd = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -260,7 +297,7 @@ static inline int client(void)
 		perror("Couldn't open socket");
 		return EXIT_FAILURE;
 	}
-
+	
 	/* The gethostbyname() function returns a struct of type hostent
 	 * for the given host name. Here name is either a hostname or an
 	 * IPv4 address.
@@ -279,13 +316,13 @@ static inline int client(void)
 	memset(&hostaddr, 0, sizeof(hostaddr));
 	hostaddr.sin_family = AF_INET;
 	hostaddr.sin_port = htons(kPort);
-	memcpy(hostent->h_addr_list, &hostaddr.sin_addr.s_addr, hostent->h_length);
+	memcpy(&hostaddr.sin_addr.s_addr, hostent->h_addr_list[0], hostent->h_length);
 	if (connect(fd, (struct sockaddr*)&hostaddr, sizeof(hostaddr)) == -1) {
 		perror("Couldn't connect");
 		RETFAIL(Lclose_fd);
 	}
 
-	if (!exchangeNicks(MODE_CLIENT, fd))
+	if (!exchangeNicks(fd))
 		RETFAIL(Lclose_fd);
 
 	ret = chat(fd);
@@ -301,11 +338,11 @@ int main(int argc, char** argv)
 	if (argc > 1) {
 		if (strcmp(argv[1], "client") == 0)
 			return client();
-		else if (strcmp(argv[1], "server") == 0)
-			return server();
+		else if (strcmp(argv[1], "host") == 0)
+			return host();
 	}
 
-	fprintf(stderr, "Usage: %s [type: server, client]\n", argv[0]);
+	fprintf(stderr, "Usage: %s [type: host, client]\n", argv[0]);
 	return EXIT_FAILURE;
 }
 
