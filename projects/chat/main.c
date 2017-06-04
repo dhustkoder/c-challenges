@@ -15,7 +15,6 @@
 #define RETFAIL(label) do { ret = EXIT_FAILURE; goto label; } while (0)
 
 
-static enum ConMode { CONMODE_HOST, CONMODE_CLIENT } conmode;
 static const unsigned short kPort = 7171;
 static const int kNickSize = 24;
 static const int kIpSize = INET_ADDRSTRLEN;
@@ -26,8 +25,11 @@ static char* chatstack[24] = { NULL };
 static int chatstack_idx = 0;
 static char host_ip[INET_ADDRSTRLEN] = { '\0' };
 static char client_ip[INET_ADDRSTRLEN] = { '\0' };
-static char localnick[24] = { '\0' };
-static char remotenick[24] = { '\0' };
+static char host_nick[24] = { '\0' };
+static char client_nick[24] = { '\0' };
+static char* local_nick = NULL;
+static char* remote_nick = NULL;
+static enum ConMode { CONMODE_HOST, CONMODE_CLIENT } conmode;
 
 
 static inline bool readInto(char* const dest, const int fdsrc, const int maxsize)
@@ -56,7 +58,7 @@ static inline bool writeFrom(const int fd_dest, const char* const src)
 }
 
 
-static inline bool exchange(const int fd, const char* send, char* recv, const int size)
+static inline bool exchange(const int fd, const char* const send, char* const recv, const int size)
 {
 	bool ret = true;
 
@@ -81,11 +83,11 @@ static inline void clearScreen(void)
 }
 
 
-static inline void getLocalNick(void)
+static inline void getLocalNick(char* const dest, const int size)
 {
 	printf("Enter Your Nick: ");
 	fflush(stdout);
-	readInto(localnick, STDIN_FILENO, sizeof(localnick));
+	readInto(dest, STDIN_FILENO, size);
 }
 
 
@@ -137,8 +139,7 @@ static inline void freeMsgStack(void)
 static inline void printChat(void)
 {
 	printf("Host: %s (%s). Client: %s (%s).\n",
-	       conmode == CONMODE_HOST ? localnick : remotenick, host_ip,
-	       conmode == CONMODE_CLIENT ? localnick : remotenick, client_ip);
+	       host_nick, host_ip, client_nick, client_ip);
 
 	int i;
 	for (i = 0; i < chatstack_idx; ++i)
@@ -167,11 +168,11 @@ static inline int chat(const int confd)
 		} else if (n == 1) {
 			rfd = STDIN_FILENO;
 			wfd = confd;
-			nick = localnick;
+			nick = local_nick;
 		} else if (n == 2) {
 			rfd = confd;
 			wfd = -1;
-			nick = remotenick;
+			nick = remote_nick;
 		}
 
 		if (!readInto(buffer, rfd, kBufferSize) ||
@@ -181,7 +182,7 @@ static inline int chat(const int confd)
 		if (buffer[0] == '/') {	
 			if (strcmp(buffer, "/quit") == 0) {
 				if (rfd == confd)
-					printf("\nConnection closed by %s.\n", remotenick);
+					printf("\nConnection closed by %s.\n", remote_nick);
 				else
 					printf("Connection closed.\n");
 				break;
@@ -206,7 +207,10 @@ static inline int host(void)
 {
 	int ret;
 	conmode = CONMODE_HOST;
-	getLocalNick();
+	local_nick = host_nick;
+	remote_nick = client_nick;
+	getLocalNick(host_nick, kNickSize);
+
 	/* socket(), creates an endpoint for communication and returns a
 	 * file descriptor that refers to that endpoint                */
 	const int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -277,7 +281,7 @@ static inline int host(void)
 
 	inet_ntop(AF_INET, &cliaddr.sin_addr, client_ip, kIpSize);
 
-	if (!exchange(clifd, localnick, remotenick, kNickSize) ||
+	if (!exchange(clifd, host_nick, client_nick, kNickSize) ||
 	    !exchange(clifd, client_ip, host_ip, kIpSize))
 		RETFAIL(Lclose_clifd);
 
@@ -295,9 +299,11 @@ static inline int client(void)
 {
 	int ret;
 	conmode = CONMODE_CLIENT;
-	getLocalNick();
-	const int fd = socket(AF_INET, SOCK_STREAM, 0);
+	local_nick = client_nick;
+	remote_nick = host_nick;
+	getLocalNick(client_nick, kNickSize);
 
+	const int fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (fd == -1) {
 		perror("Couldn't open socket");
 		return EXIT_FAILURE;
@@ -330,7 +336,7 @@ static inline int client(void)
 		RETFAIL(Lclose_fd);
 	}
 
-	if (!exchange(fd, localnick, remotenick, kNickSize) ||
+	if (!exchange(fd, client_nick, host_nick, kNickSize) ||
 	    !exchange(fd, host_ip, client_ip, kIpSize))
 		RETFAIL(Lclose_fd);
 
