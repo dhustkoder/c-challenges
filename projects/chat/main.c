@@ -74,7 +74,7 @@ static inline bool exchangeNicks(const int fd)
 }
 
 
-static inline void clearscr(void)
+static inline void clearScreen(void)
 {
 	system("clear");
 }
@@ -109,7 +109,7 @@ static inline int waitDataBy(const int fd1, const int fd2, const long usecs)
 }
 
 
-static inline bool stackmsg(const char* const nick, const char* const msg)
+static inline bool stackMsg(const char* const nick, const char* const msg)
 {
 	if (chatstack_idx >= kChatStackSize) {
 		free(chatstack[0]);
@@ -126,14 +126,14 @@ static inline bool stackmsg(const char* const nick, const char* const msg)
 }
 
 
-static inline void freemsgstack(void)
+static inline void freeMsgStack(void)
 {
 	for (int i = 0; i < chatstack_idx; ++i)
 		free(chatstack[i]);
 }
 
 
-static inline void printchat(void)
+static inline void printChat(void)
 {
 	printf("Host: %s. Client: %s\n",
 	       conmode == CONMODE_HOST ? localnick : remotenick,
@@ -156,8 +156,8 @@ static inline int chat(const int confd)
 	const char* nick;
 	int rfd, wfd;
 
-	clearscr();
-	printchat();
+	clearScreen();
+	printChat();
 
 	for (;;) {
 		const int n = waitDataBy(STDIN_FILENO, confd, usecs);
@@ -190,12 +190,12 @@ static inline int chat(const int confd)
 			}
 		}
 
-		stackmsg(nick, buffer);
-		clearscr();
-		printchat();
+		stackMsg(nick, buffer);
+		clearScreen();
+		printChat();
 	}
 
-	freemsgstack();
+	freeMsgStack();
 	return EXIT_SUCCESS;
 }
 
@@ -302,7 +302,9 @@ static inline int client(void)
 	 * for the given host name. Here name is either a hostname or an
 	 * IPv4 address.
 	 * */
-	struct hostent *hostent = gethostbyname("localhost");
+	printf("Enter the host IP: ");
+	readIntoBuffer(STDIN_FILENO);
+	struct hostent *hostent = gethostbyname(buffer);
 	if (hostent == NULL) {
 		perror("Couldn't get host by name");
 		RETFAIL(Lclose_fd);
