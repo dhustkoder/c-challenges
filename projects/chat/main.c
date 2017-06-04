@@ -152,50 +152,57 @@ static inline void printChat(void)
 }
 
 
+static inline bool parseChatCommand(const char* const cmd, const bool is_local)
+{
+	if (strcmp(cmd, "/quit") == 0) {
+		if (is_local)
+			puts("You closed the connection.");
+		else
+			printf("\nConnection closed by %s.\n", remote_nick);
+		return false;
+	} else if (is_local) {
+		printf("Unknown command %s.\n", cmd);
+		sleep(3);
+	}
+	return true;
+}
+
+
 static inline int chat(const int confd)
 {
 	const int usecs = 1000 * 50;
 	const char* nick;
-	int rfd, wfd;
-
-	clearScreen();
-	printChat();
+	int rfd, wfd, ready;
 
 	for (;;) {
-		const int n = waitDataBy(STDIN_FILENO, confd, usecs);
-		if (n <= 0) {
+		clearScreen();
+		printChat();
+
+		while ((ready = waitDataBy(STDIN_FILENO, confd, usecs)) == 0)
 			continue;
-		} else if (n == 1) {
+
+		if (ready == 1) {
 			rfd = STDIN_FILENO;
 			wfd = confd;
 			nick = local_nick;
-		} else if (n == 2) {
+		} else if (ready == 2) {
 			rfd = confd;
 			wfd = -1;
 			nick = remote_nick;
+		} else {
+			break;
 		}
 
 		if (!readInto(buffer, rfd, kBufferSize) ||
 		    (wfd != -1 && !writeFrom(wfd, buffer)))
 			return EXIT_FAILURE;
 
-		if (buffer[0] == '/') {	
-			if (strcmp(buffer, "/quit") == 0) {
-				if (rfd == confd)
-					printf("\nConnection closed by %s.\n", remote_nick);
-				else
-					printf("Connection closed.\n");
+		if (buffer[0] == '/') {
+			if (!parseChatCommand(buffer, rfd == STDIN_FILENO))
 				break;
-			} else {
-				if (rfd == STDIN_FILENO)
-					printf("Unknown command %s\n", buffer);
-				continue;
-			}
+		} else {
+			stackMsg(nick, buffer);
 		}
-
-		stackMsg(nick, buffer);
-		clearScreen();
-		printChat();
 	}
 
 	freeMsgStack();
@@ -348,7 +355,7 @@ Lclose_fd:
 }
 
 
-int main(int argc, char** argv)
+int main(const int argc, const char* const * const argv)
 {
 	if (argc > 1) {
 		if (strcmp(argv[1], "client") == 0)
