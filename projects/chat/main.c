@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/select.h>
+#include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netdb.h>
 
@@ -17,35 +18,37 @@
 static enum ConMode { CONMODE_HOST, CONMODE_CLIENT } conmode;
 static const unsigned short kPort = 7171;
 static const int kNickSize = 24;
+static const int kIpSize = INET_ADDRSTRLEN;
 static const int kChatStackSize = 24;
 static const int kBufferSize = 512;
 static char buffer[512] = { '\0' };
 static char* chatstack[24] = { NULL };
 static int chatstack_idx = 0;
+static char host_ip[INET_ADDRSTRLEN] = { '\0' };
+static char client_ip[INET_ADDRSTRLEN] = { '\0' };
 static char localnick[24] = { '\0' };
 static char remotenick[24] = { '\0' };
 
 
-static inline bool readIntoBuffer(const int fd)
+static inline bool readInto(char* const dest, const int fdsrc, const int maxsize)
 {
 	int n;
-	if ((n = read(fd, buffer, kBufferSize - 1)) <= 0) {
+	if ((n = read(fdsrc, dest, maxsize - 1)) <= 0) {
 		perror("read");
 		return false;
 	}
 
-	if (buffer[n - 1] == '\n')
-		buffer[n - 1] = '\0';
-	else
-		buffer[n] = '\0';
+	if (dest[n - 1] == '\n')
+		--n;
 
+	dest[n] = '\0';
 	return true;
 }
 
 
-static inline bool writeFromBuffer(const int fd)
+static inline bool writeFrom(const int fd_dest, const char* const src)
 {
-	if (write(fd, buffer, strlen(buffer)) <= 0) {
+	if (write(fd_dest, src, strlen(src)) <= 0) {
 		perror("write");
 		return false;
 	}
@@ -53,22 +56,20 @@ static inline bool writeFromBuffer(const int fd)
 }
 
 
-static inline bool exchangeNicks(const int fd)
+static inline bool exchange(const int fd, const char* send, char* recv, const int size)
 {
 	bool ret = true;
 
 	if (conmode == CONMODE_HOST) {
-		if (write(fd, localnick, kNickSize) < 0 ||
-		    read(fd, remotenick, kNickSize) < 0)
+		if (write(fd, send, size) == -1 || read(fd, recv, size) == -1)
 			ret = false;
 	} else {
-		if (read(fd, remotenick, kNickSize) < 0 ||
-		    write(fd, localnick, kNickSize) < 0)
+		if (read(fd, recv, size) == -1 || write(fd, send, size) == -1)
 			ret = false;
 	}
 
-	if (ret == false)
-		perror("Couldn't exchange nicks");
+	if (!ret)
+		perror("exchange failed");
 
 	return ret;
 }
@@ -83,8 +84,8 @@ static inline void clearScreen(void)
 static inline void getLocalNick(void)
 {
 	printf("Enter Your Nick: ");
-	fgets(localnick, sizeof(localnick) - 1, stdin);
-	localnick[strlen(localnick) - 1] = '\0';
+	fflush(stdout);
+	readInto(localnick, STDIN_FILENO, sizeof(localnick));
 }
 
 
@@ -135,9 +136,9 @@ static inline void freeMsgStack(void)
 
 static inline void printChat(void)
 {
-	printf("Host: %s. Client: %s\n",
-	       conmode == CONMODE_HOST ? localnick : remotenick,
-	       conmode == CONMODE_CLIENT ? localnick : remotenick);
+	printf("Host: %s (%s). Client: %s (%s).\n",
+	       conmode == CONMODE_HOST ? localnick : remotenick, host_ip,
+	       conmode == CONMODE_CLIENT ? localnick : remotenick, client_ip);
 
 	int i;
 	for (i = 0; i < chatstack_idx; ++i)
@@ -173,7 +174,8 @@ static inline int chat(const int confd)
 			nick = remotenick;
 		}
 
-		if (!readIntoBuffer(rfd) || (wfd != -1 && !writeFromBuffer(wfd)))
+		if (!readInto(buffer, rfd, kBufferSize) ||
+		    (wfd != -1 && !writeFrom(wfd, buffer)))
 			return EXIT_FAILURE;
 
 		if (buffer[0] == '/') {	
@@ -273,7 +275,10 @@ static inline int host(void)
 		RETFAIL(Lclose_fd);
 	}
 
-	if (!exchangeNicks(clifd))
+	inet_ntop(AF_INET, &cliaddr.sin_addr, client_ip, kIpSize);
+
+	if (!exchange(clifd, localnick, remotenick, kNickSize) ||
+	    !exchange(clifd, client_ip, host_ip, kIpSize))
 		RETFAIL(Lclose_clifd);
 
 	ret = chat(clifd);
@@ -303,8 +308,9 @@ static inline int client(void)
 	 * IPv4 address.
 	 * */
 	printf("Enter the host IP: ");
-	readIntoBuffer(STDIN_FILENO);
-	struct hostent *hostent = gethostbyname(buffer);
+	fflush(stdout);
+	readInto(host_ip, STDIN_FILENO, kIpSize);
+	struct hostent *hostent = gethostbyname(host_ip);
 	if (hostent == NULL) {
 		perror("Couldn't get host by name");
 		RETFAIL(Lclose_fd);
@@ -324,7 +330,8 @@ static inline int client(void)
 		RETFAIL(Lclose_fd);
 	}
 
-	if (!exchangeNicks(fd))
+	if (!exchange(fd, localnick, remotenick, kNickSize) ||
+	    !exchange(fd, host_ip, client_ip, kIpSize))
 		RETFAIL(Lclose_fd);
 
 	ret = chat(fd);
