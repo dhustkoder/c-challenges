@@ -213,6 +213,7 @@ static inline int chat(const int confd)
 
 static inline bool setUPnP(void)
 {
+	int error;
 	struct UPNPDev* const upnp_dev = upnpDiscover(
 	        2000   , // time to wait (milliseconds)
 	        NULL   , // multicast interface (or null defaults to 239.255.255.250)
@@ -220,7 +221,12 @@ static inline bool setUPnP(void)
 	        0      , // source port to use (or zero defaults to port 1900)
 	        0      , // 0==IPv4, 1==IPv6
 		0      , // ttl
-	        NULL); // error condition
+	        &error); // error condition
+
+	if (error != 0) {
+		fprintf(stderr, "Couldn't set UPnP.\n");
+		return false;
+	}
 
 	char lan_address[64];
 	struct UPNPUrls upnp_urls;
@@ -233,7 +239,7 @@ static inline bool setUPnP(void)
 	UPNP_GetExternalIPAddress(upnp_urls.controlURL, upnp_data.first.servicetype, wan_address);
 
 	// add a new TCP port mapping from WAN port 12345 to local host port 24680
-	const int error = UPNP_AddPortMapping(
+	error = UPNP_AddPortMapping(
 	            upnp_urls.controlURL,
 	            upnp_data.first.servicetype,
 	            "95467"     ,  // external (WAN) port requested
@@ -245,7 +251,13 @@ static inline bool setUPnP(void)
 	            "86400"     ); // port map lease duration (in seconds) or zero for "as long as possible"
 	
 	freeUPNPDevlist(upnp_dev);
-	return error == 0;
+
+	if (error != 0) {
+		fprintf(stderr, "Couldn't set UPnP.\n");
+		return false;
+	}
+
+	return true;
 }
 
 
@@ -256,7 +268,9 @@ static inline int host(void)
 	local_nick = host_nick;
 	remote_nick = client_nick;
 	getLocalNick(host_nick, kNickSize);
-	setUPnP();
+
+	if (!setUPnP())
+		return EXIT_FAILURE;
 
 	/* socket(), creates an endpoint for communication and returns a
 	 * file descriptor that refers to that endpoint                */
