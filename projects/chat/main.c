@@ -10,7 +10,8 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netdb.h>
-
+#include <miniupnpc/miniupnpc.h>
+#include <miniupnpc/upnpcommands.h>
 
 #define RETFAIL(label) do { ret = EXIT_FAILURE; goto label; } while (0)
 
@@ -210,6 +211,44 @@ static inline int chat(const int confd)
 }
 
 
+static inline bool setUPnP(void)
+{
+	struct UPNPDev* const upnp_dev = upnpDiscover(
+	        2000   , // time to wait (milliseconds)
+	        NULL   , // multicast interface (or null defaults to 239.255.255.250)
+	        NULL   , // path to minissdpd socket (or null defaults to /var/run/minissdpd.sock)
+	        0      , // source port to use (or zero defaults to port 1900)
+	        0      , // 0==IPv4, 1==IPv6
+		0      , // ttl
+	        NULL); // error condition
+
+	char lan_address[64];
+	struct UPNPUrls upnp_urls;
+	struct IGDdatas upnp_data;
+	UPNP_GetValidIGD(upnp_dev, &upnp_urls, &upnp_data, lan_address, sizeof(lan_address));
+	// look up possible "status" values, the number "1" indicates a valid IGD was found
+
+	// get the external (WAN) IP address
+	char wan_address[64];
+	UPNP_GetExternalIPAddress(upnp_urls.controlURL, upnp_data.first.servicetype, wan_address);
+
+	// add a new TCP port mapping from WAN port 12345 to local host port 24680
+	const int error = UPNP_AddPortMapping(
+	            upnp_urls.controlURL,
+	            upnp_data.first.servicetype,
+	            "95467"     ,  // external (WAN) port requested
+	            "7171"      ,  // internal (LAN) port to which packets will be redirected
+	            lan_address ,  // internal (LAN) address to which packets will be redirected
+	            "Chat"      ,  // text description to indicate why or who is responsible for the port mapping
+	            "TCP"       ,  // protocol must be either TCP or UDP
+	            NULL        ,  // remote (peer) host address or nullptr for no restriction
+	            "86400"     ); // port map lease duration (in seconds) or zero for "as long as possible"
+	
+	freeUPNPDevlist(upnp_dev);
+	return error == 0;
+}
+
+
 static inline int host(void)
 {
 	int ret;
@@ -217,6 +256,7 @@ static inline int host(void)
 	local_nick = host_nick;
 	remote_nick = client_nick;
 	getLocalNick(host_nick, kNickSize);
+	setUPnP();
 
 	/* socket(), creates an endpoint for communication and returns a
 	 * file descriptor that refers to that endpoint                */
@@ -367,5 +407,4 @@ int main(const int argc, const char* const * const argv)
 	fprintf(stderr, "Usage: %s [type: host, client]\n", argv[0]);
 	return EXIT_FAILURE;
 }
-
 
