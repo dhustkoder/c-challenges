@@ -12,6 +12,8 @@
 #include <netdb.h>
 #include <miniupnpc/miniupnpc.h>
 #include <miniupnpc/upnpcommands.h>
+#include <miniupnpc/upnperrors.h>
+
 
 #define RETFAIL(label) do { ret = EXIT_FAILURE; goto label; } while (0)
 
@@ -213,18 +215,18 @@ static inline int chat(const int confd)
 
 static inline bool setUPnP(void)
 {
-	int error;
+	int error = 0;
 	struct UPNPDev* const upnp_dev = upnpDiscover(
 	        2000   , // time to wait (milliseconds)
 	        NULL   , // multicast interface (or null defaults to 239.255.255.250)
 	        NULL   , // path to minissdpd socket (or null defaults to /var/run/minissdpd.sock)
 	        0      , // source port to use (or zero defaults to port 1900)
 	        0      , // 0==IPv4, 1==IPv6
-		0      , // ttl
+		2      , // ttl
 	        &error); // error condition
 
 	if (error != 0) {
-		fprintf(stderr, "Couldn't set UPnP.\n");
+		fprintf(stderr, "Couldn't set UPnP: %s\n", strupnperror(error));
 		return false;
 	}
 
@@ -242,18 +244,18 @@ static inline bool setUPnP(void)
 	error = UPNP_AddPortMapping(
 	            upnp_urls.controlURL,
 	            upnp_data.first.servicetype,
-	            "95467"     ,  // external (WAN) port requested
+	            "2525"      ,  // external (WAN) port requested
 	            "7171"      ,  // internal (LAN) port to which packets will be redirected
 	            lan_address ,  // internal (LAN) address to which packets will be redirected
 	            "Chat"      ,  // text description to indicate why or who is responsible for the port mapping
 	            "TCP"       ,  // protocol must be either TCP or UDP
 	            NULL        ,  // remote (peer) host address or nullptr for no restriction
-	            "86400"     ); // port map lease duration (in seconds) or zero for "as long as possible"
+	            NULL        ); // port map lease duration (in seconds) or zero for "as long as possible"
 	
 	freeUPNPDevlist(upnp_dev);
 
 	if (error != 0) {
-		fprintf(stderr, "Couldn't set UPnP.\n");
+		fprintf(stderr, "Couldn't set UPnP. %s\n", strupnperror(error));
 		return false;
 	}
 

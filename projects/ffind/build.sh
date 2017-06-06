@@ -1,4 +1,4 @@
-#!/bin/sh
+
 
 PROJDIR=$(dirname "$0")
 CC="$1"
