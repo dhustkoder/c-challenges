@@ -226,7 +226,6 @@ static inline bool initializeUPNP(void)
 {
 	int error = 0;
 
-
 	upnp_info.extport = "7171";
 	upnp_info.proto = "TCP";
 
@@ -259,13 +258,13 @@ static inline bool initializeUPNP(void)
 	error = UPNP_AddPortMapping(
 	            upnp_info.urls.controlURL,
 	            upnp_info.data.first.servicetype,
-	            "7171"      ,  // external (WAN) port requested
-	            "7171"      ,  // internal (LAN) port to which packets will be redirected
-	            lan_address ,  // internal (LAN) address to which packets will be redirected
-	            "Chat"      ,  // text description to indicate why or who is responsible for the port mapping
-	            "TCP"       ,  // protocol must be either TCP or UDP
-	            NULL        ,  // remote (peer) host address or nullptr for no restriction
-	            NULL        ); // port map lease duration (in seconds) or zero for "as long as possible"
+	            upnp_info.extport ,  // external (WAN) port requested
+	            upnp_info.extport ,  // internal (LAN) port to which packets will be redirected
+	            lan_address       ,  // internal (LAN) address to which packets will be redirected
+	            "Chat"            ,  // text description to indicate why or who is responsible for the port mapping
+	            upnp_info.proto   ,  // protocol must be either TCP or UDP
+	            NULL              ,  // remote (peer) host address or nullptr for no restriction
+	            NULL              ); // port map lease duration (in seconds) or zero for "as long as possible"
 
 	if (error != 0) {
 		fprintf(stderr, "Couldn't set UPnP. %s\n", strupnperror(error));
