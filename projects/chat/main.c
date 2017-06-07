@@ -10,9 +10,12 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netdb.h>
+
+#if 0
 #include <miniupnpc/miniupnpc.h>
 #include <miniupnpc/upnpcommands.h>
 #include <miniupnpc/upnperrors.h>
+#endif
 
 
 #define RETFAIL(label) do { ret = EXIT_FAILURE; goto label; } while (0)
@@ -35,6 +38,7 @@ static char* remote_nick               = NULL;
 
 static enum ConMode { CONMODE_HOST, CONMODE_CLIENT } conmode;
 
+#if 0
 static struct UPNPInfo {
 	struct UPNPDev* dev;
 	struct UPNPUrls urls;
@@ -42,6 +46,7 @@ static struct UPNPInfo {
 	const char* extport;
 	const char* proto;
 } upnp_info = { .dev = NULL, .extport = NULL, .proto = NULL };
+#endif
 
 
 static inline bool readInto(char* const dest, const int fdsrc, const int maxsize)
@@ -221,7 +226,7 @@ static inline int chat(const int confd)
 	return EXIT_SUCCESS;
 }
 
-
+#if 0
 static inline bool initializeUPNP(void)
 {
 	int error = 0;
@@ -388,6 +393,7 @@ LterminateUPNP:
 	terminateUPNP();
 	return ret;
 }
+#endif
 
 
 static inline int client(void)
@@ -448,11 +454,11 @@ int main(const int argc, const char* const * const argv)
 	if (argc > 1) {
 		if (strcmp(argv[1], "client") == 0)
 			return client();
-		else if (strcmp(argv[1], "host") == 0)
-			return host();
+		//else if (strcmp(argv[1], "host") == 0)
+			//return host();
 	}
 
-	fprintf(stderr, "Usage: %s [type: host, client]\n", argv[0]);
+	fprintf(stderr, "Usage: %s [type: client]\n", argv[0]);
 	return EXIT_FAILURE;
 }
 
