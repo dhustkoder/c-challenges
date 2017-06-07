@@ -225,6 +225,8 @@ static inline int chat(const int confd)
 static inline bool initializeUPNP(void)
 {
 	int error = 0;
+	char lan_addr[64];
+	char wan_addr[64];
 
 	upnp_info.extport = "7171";
 	upnp_info.proto = "TCP";
@@ -235,24 +237,30 @@ static inline bool initializeUPNP(void)
 	        NULL   , // path to minissdpd socket (or null defaults to /var/run/minissdpd.sock)
 	        0      , // source port to use (or zero defaults to port 1900)
 	        0      , // 0==IPv4, 1==IPv6
-		2      , // ttl
+		0      , // ttl
 	        &error); // error condition
 
-	if (error != 0) {
+	if (error != UPNPDISCOVER_SUCCESS) {
 		fprintf(stderr, "Couldn't set UPnP: %s\n", strupnperror(error));
 		return false;
 	}
 
-	char lan_address[64];
-	UPNP_GetValidIGD(upnp_info.dev, &upnp_info.urls, &upnp_info.data,
-	                 lan_address, sizeof(lan_address));
+	const int status = UPNP_GetValidIGD(upnp_info.dev, &upnp_info.urls, &upnp_info.data,
+	                                    lan_addr, sizeof(lan_addr));
 	// look up possible "status" values, the number "1" indicates a valid IGD was found
+	if (status == 0) {
+		fprintf(stderr, "Couldn't find a valid IGD.\n");
+		goto Lfree_upnp_dev;
+	}
+	
 
 	// get the external (WAN) IP address
-	char wan_address[64];
-	UPNP_GetExternalIPAddress(upnp_info.urls.controlURL,
-	                          upnp_info.data.first.servicetype,
-				  wan_address);
+	error = UPNP_GetExternalIPAddress(upnp_info.urls.controlURL,
+	                                  upnp_info.data.first.servicetype,
+				          wan_addr);
+
+	if (error != UPNPCOMMAND_SUCCESS)
+		goto Lupnp_command_error;
 
 	// add a new TCP port mapping from WAN port 12345 to local host port 24680
 	error = UPNP_AddPortMapping(
@@ -260,18 +268,23 @@ static inline bool initializeUPNP(void)
 	            upnp_info.data.first.servicetype,
 	            upnp_info.extport ,  // external (WAN) port requested
 	            upnp_info.extport ,  // internal (LAN) port to which packets will be redirected
-	            lan_address       ,  // internal (LAN) address to which packets will be redirected
+	            lan_addr          ,  // internal (LAN) address to which packets will be redirected
 	            "Chat"            ,  // text description to indicate why or who is responsible for the port mapping
 	            upnp_info.proto   ,  // protocol must be either TCP or UDP
 	            NULL              ,  // remote (peer) host address or nullptr for no restriction
 	            NULL              ); // port map lease duration (in seconds) or zero for "as long as possible"
 
-	if (error != 0) {
-		fprintf(stderr, "Couldn't set UPnP. %s\n", strupnperror(error));
-		return false;
-	}
+	if (error != UPNPCOMMAND_SUCCESS)
+		goto Lupnp_command_error;
 
 	return true;
+
+Lupnp_command_error:
+	fprintf(stderr, "Couldn't set UPnP: %s\n", strupnperror(error));
+	FreeUPNPUrls(&upnp_info.urls);
+Lfree_upnp_dev:
+	freeUPNPDevlist(upnp_info.dev);
+	return false;
 }
 
 
