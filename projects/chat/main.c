@@ -18,21 +18,30 @@
 #define RETFAIL(label) do { ret = EXIT_FAILURE; goto label; } while (0)
 
 
-static const unsigned short kPort = 7171;
-static const int kNickSize = 24;
-static const int kIpSize = INET_ADDRSTRLEN;
-static const int kChatStackSize = 24;
-static const int kBufferSize = 512;
-static char buffer[512] = { '\0' };
-static char* chatstack[24] = { NULL };
-static int chatstack_idx = 0;
-static char host_ip[INET_ADDRSTRLEN] = { '\0' };
+static const int kPort                 = 7171;
+static const int kNickSize             = 24;
+static const int kIpSize               = INET_ADDRSTRLEN;
+static const int kChatStackSize        = 24;
+static const int kBufferSize           = 512;
+static char buffer[512]                = { '\0' };
+static char* chatstack[24]             = { NULL };
+static int chatstack_idx               = 0;
+static char host_ip[INET_ADDRSTRLEN]   = { '\0' };
 static char client_ip[INET_ADDRSTRLEN] = { '\0' };
-static char host_nick[24] = { '\0' };
-static char client_nick[24] = { '\0' };
-static char* local_nick = NULL;
-static char* remote_nick = NULL;
+static char host_nick[24]              = { '\0' };
+static char client_nick[24]            = { '\0' };
+static char* local_nick                = NULL;
+static char* remote_nick               = NULL;
+
 static enum ConMode { CONMODE_HOST, CONMODE_CLIENT } conmode;
+
+static struct UPNPInfo {
+	struct UPNPDev* dev;
+	struct UPNPUrls urls;
+	struct IGDdatas data;
+	const char* extport;
+	const char* proto;
+} upnp_info = { .dev = NULL, .extport = NULL, .proto = NULL };
 
 
 static inline bool readInto(char* const dest, const int fdsrc, const int maxsize)
@@ -213,10 +222,15 @@ static inline int chat(const int confd)
 }
 
 
-static inline bool setUPnP(void)
+static inline bool initializeUPNP(void)
 {
 	int error = 0;
-	struct UPNPDev* const upnp_dev = upnpDiscover(
+
+
+	upnp_info.extport = "7171";
+	upnp_info.proto = "TCP";
+
+	upnp_info.dev = upnpDiscover(
 	        2000   , // time to wait (milliseconds)
 	        NULL   , // multicast interface (or null defaults to 239.255.255.250)
 	        NULL   , // path to minissdpd socket (or null defaults to /var/run/minissdpd.sock)
@@ -231,28 +245,27 @@ static inline bool setUPnP(void)
 	}
 
 	char lan_address[64];
-	struct UPNPUrls upnp_urls;
-	struct IGDdatas upnp_data;
-	UPNP_GetValidIGD(upnp_dev, &upnp_urls, &upnp_data, lan_address, sizeof(lan_address));
+	UPNP_GetValidIGD(upnp_info.dev, &upnp_info.urls, &upnp_info.data,
+	                 lan_address, sizeof(lan_address));
 	// look up possible "status" values, the number "1" indicates a valid IGD was found
 
 	// get the external (WAN) IP address
 	char wan_address[64];
-	UPNP_GetExternalIPAddress(upnp_urls.controlURL, upnp_data.first.servicetype, wan_address);
+	UPNP_GetExternalIPAddress(upnp_info.urls.controlURL,
+	                          upnp_info.data.first.servicetype,
+				  wan_address);
 
 	// add a new TCP port mapping from WAN port 12345 to local host port 24680
 	error = UPNP_AddPortMapping(
-	            upnp_urls.controlURL,
-	            upnp_data.first.servicetype,
-	            "2525"      ,  // external (WAN) port requested
+	            upnp_info.urls.controlURL,
+	            upnp_info.data.first.servicetype,
+	            "7171"      ,  // external (WAN) port requested
 	            "7171"      ,  // internal (LAN) port to which packets will be redirected
 	            lan_address ,  // internal (LAN) address to which packets will be redirected
 	            "Chat"      ,  // text description to indicate why or who is responsible for the port mapping
 	            "TCP"       ,  // protocol must be either TCP or UDP
 	            NULL        ,  // remote (peer) host address or nullptr for no restriction
 	            NULL        ); // port map lease duration (in seconds) or zero for "as long as possible"
-	
-	freeUPNPDevlist(upnp_dev);
 
 	if (error != 0) {
 		fprintf(stderr, "Couldn't set UPnP. %s\n", strupnperror(error));
@@ -260,6 +273,24 @@ static inline bool setUPnP(void)
 	}
 
 	return true;
+}
+
+
+static inline void terminateUPNP(void)
+{
+	const int error = UPNP_DeletePortMapping(upnp_info.urls.controlURL,
+	                       upnp_info.data.first.servicetype,
+			       upnp_info.extport,
+			       upnp_info.proto,
+			       NULL);
+
+	freeUPNPDevlist(upnp_info.dev);
+	FreeUPNPUrls(&upnp_info.urls);
+
+	if (error != 0) {
+		fprintf(stderr, "Couldn't delete port mapping: %s",
+		        strupnperror(error));
+	}
 }
 
 
@@ -271,7 +302,7 @@ static inline int host(void)
 	remote_nick = client_nick;
 	getLocalNick(host_nick, kNickSize);
 
-	if (!setUPnP())
+	if (!initializeUPNP())
 		return EXIT_FAILURE;
 
 	/* socket(), creates an endpoint for communication and returns a
@@ -280,7 +311,7 @@ static inline int host(void)
 
 	if (fd == -1) {
 		perror("Couldn't open socket");
-		return EXIT_FAILURE;
+		RETFAIL(LterminateUPNP);
 	}
 
 	/* The setsockopt() function shall set the option specified by the
@@ -306,7 +337,7 @@ static inline int host(void)
 	memset(&servaddr, 0, sizeof(servaddr));
 	servaddr.sin_family = AF_INET;          // IPv4 protocol
 	servaddr.sin_addr.s_addr = INADDR_ANY;  // bind to any interface
-	servaddr.sin_port = htons(kPort);       /* converts the unsigned short 
+	servaddr.sin_port = htons(kPort);        /* converts the unsigned short 
 	                                         * int from hostbyte order to
 						 * network byte order
 						 * */
@@ -354,6 +385,8 @@ Lclose_clifd:
 	close(clifd);
 Lclose_fd:
 	close(fd);
+LterminateUPNP:
+	terminateUPNP();
 	return ret;
 }
 
