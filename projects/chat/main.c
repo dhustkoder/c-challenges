@@ -18,7 +18,6 @@
 #define RETFAIL(label) do { ret = EXIT_FAILURE; goto label; } while (0)
 
 
-static const int kPort                 = 7171;
 static const int kNickSize             = 24;
 static const int kIpSize               = INET_ADDRSTRLEN;
 static const int kChatStackSize        = 24;
@@ -39,9 +38,9 @@ static struct UPNPInfo {
 	struct UPNPDev* dev;
 	struct UPNPUrls urls;
 	struct IGDdatas data;
-	const char* extport;
+	char* port;
 	const char* proto;
-} upnp_info = { .dev = NULL, .extport = NULL, .proto = NULL };
+} upnp_info = { .dev = NULL, .port = NULL, .proto = NULL };
 
 
 static inline bool readInto(char* const dest, const int fdsrc, const int maxsize)
@@ -60,7 +59,7 @@ static inline bool readInto(char* const dest, const int fdsrc, const int maxsize
 }
 
 
-static inline bool writeFrom(const int fd_dest, const char* const src)
+static inline bool writeInto(const int fd_dest, const char* const src)
 {
 	if (write(fd_dest, src, strlen(src)) <= 0) {
 		perror("write");
@@ -95,10 +94,9 @@ static inline void clearScreen(void)
 }
 
 
-static inline void getLocalNick(char* const dest, const int size)
+static inline void askUserFor(const char* const msg, char* const dest, const int size)
 {
-	printf("Enter Your Nick: ");
-	fflush(stdout);
+	writeInto(STDOUT_FILENO, msg);
 	readInto(dest, STDIN_FILENO, size);
 }
 
@@ -206,7 +204,7 @@ static inline int chat(const int confd)
 		}
 
 		if (!readInto(buffer, rfd, kBufferSize) ||
-		    (wfd != -1 && !writeFrom(wfd, buffer)))
+		    (wfd != -1 && !writeInto(wfd, buffer)))
 			return EXIT_FAILURE;
 
 		if (buffer[0] == '/') {
@@ -222,17 +220,17 @@ static inline int chat(const int confd)
 }
 
 
-static inline bool initializeUPNP(void)
+static inline bool initializeUPNP(const char* const port)
 {
 	int error = 0;
 	char lan_addr[64];
 	char wan_addr[64];
-
-	upnp_info.extport = "7171";
+	upnp_info.port = malloc(strlen(port) + 1);
+	strcpy(upnp_info.port, port);
 	upnp_info.proto = "TCP";
 
 	upnp_info.dev = upnpDiscover(
-	        2000   , // time to wait (milliseconds)
+	        10000   , // time to wait (milliseconds)
 	        NULL   , // multicast interface (or null defaults to 239.255.255.250)
 	        NULL   , // path to minissdpd socket (or null defaults to /var/run/minissdpd.sock)
 	        0      , // source port to use (or zero defaults to port 1900)
@@ -266,8 +264,8 @@ static inline bool initializeUPNP(void)
 	error = UPNP_AddPortMapping(
 	            upnp_info.urls.controlURL,
 	            upnp_info.data.first.servicetype,
-	            upnp_info.extport ,  // external (WAN) port requested
-	            upnp_info.extport ,  // internal (LAN) port to which packets will be redirected
+	            upnp_info.port ,  // external (WAN) port requested
+	            upnp_info.port ,  // internal (LAN) port to which packets will be redirected
 	            lan_addr          ,  // internal (LAN) address to which packets will be redirected
 	            "Chat"            ,  // text description to indicate why or who is responsible for the port mapping
 	            upnp_info.proto   ,  // protocol must be either TCP or UDP
@@ -292,12 +290,13 @@ static inline void terminateUPNP(void)
 {
 	const int error = UPNP_DeletePortMapping(upnp_info.urls.controlURL,
 	                       upnp_info.data.first.servicetype,
-			       upnp_info.extport,
+			       upnp_info.port,
 			       upnp_info.proto,
 			       NULL);
-
+	
 	freeUPNPDevlist(upnp_info.dev);
 	FreeUPNPUrls(&upnp_info.urls);
+	free(upnp_info.port);
 
 	if (error != 0) {
 		fprintf(stderr, "Couldn't delete port mapping: %s",
@@ -312,9 +311,11 @@ static inline int host(void)
 	conmode = CONMODE_HOST;
 	local_nick = host_nick;
 	remote_nick = client_nick;
-	getLocalNick(host_nick, kNickSize);
+	askUserFor("Enter your username: ", host_nick, kNickSize);
+	askUserFor("Enter the connection port: ", buffer, kBufferSize);
+	const unsigned short port = strtoll(buffer, NULL, 0);
 
-	if (!initializeUPNP())
+	if (!initializeUPNP(buffer))
 		return EXIT_FAILURE;
 
 	/* socket(), creates an endpoint for communication and returns a
@@ -349,7 +350,7 @@ static inline int host(void)
 	memset(&servaddr, 0, sizeof(servaddr));
 	servaddr.sin_family = AF_INET;          // IPv4 protocol
 	servaddr.sin_addr.s_addr = INADDR_ANY;  // bind to any interface
-	servaddr.sin_port = htons(kPort);        /* converts the unsigned short 
+	servaddr.sin_port = htons(port);        /* converts the unsigned short 
 	                                         * int from hostbyte order to
 						 * network byte order
 						 * */
@@ -409,7 +410,9 @@ static inline int client(void)
 	conmode = CONMODE_CLIENT;
 	local_nick = client_nick;
 	remote_nick = host_nick;
-	getLocalNick(client_nick, kNickSize);
+	askUserFor("Enter your username: ", client_nick, kNickSize);
+	askUserFor("Enter the connection port: ", buffer, kBufferSize);
+	const unsigned short port = strtoll(buffer, NULL, 0);
 
 	const int fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (fd == -1) {
@@ -437,7 +440,7 @@ static inline int client(void)
 	struct sockaddr_in hostaddr;
 	memset(&hostaddr, 0, sizeof(hostaddr));
 	hostaddr.sin_family = AF_INET;
-	hostaddr.sin_port = htons(kPort);
+	hostaddr.sin_port = htons(port);
 	memcpy(&hostaddr.sin_addr.s_addr, hostent->h_addr_list[0], hostent->h_length);
 	if (connect(fd, (struct sockaddr*)&hostaddr, sizeof(hostaddr)) == -1) {
 		perror("Couldn't connect");
