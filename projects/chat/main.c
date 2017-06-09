@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <signal.h>
 
 #include <unistd.h>
 #include <sys/types.h>
@@ -220,6 +221,15 @@ static inline int chat(const int confd)
 }
 
 
+static void terminateUPNP(void);
+static inline void upnpSigHandler(const int sig)
+{
+	fprintf(stderr, "\nreceived signal: %d\nClosing...\n", sig);
+	terminateUPNP();
+	exit(sig);
+}
+
+
 static inline bool initializeUPNP(const char* const port)
 {
 	int error = 0;
@@ -230,7 +240,7 @@ static inline bool initializeUPNP(const char* const port)
 	upnp_info.proto = "TCP";
 
 	upnp_info.dev = upnpDiscover(
-	        10000   , // time to wait (milliseconds)
+	        4500   , // time to wait (milliseconds)
 	        NULL   , // multicast interface (or null defaults to 239.255.255.250)
 	        NULL   , // path to minissdpd socket (or null defaults to /var/run/minissdpd.sock)
 	        0      , // source port to use (or zero defaults to port 1900)
@@ -275,6 +285,9 @@ static inline bool initializeUPNP(const char* const port)
 	if (error != UPNPCOMMAND_SUCCESS)
 		goto Lupnp_command_error;
 
+	signal(SIGINT, upnpSigHandler);
+	signal(SIGKILL, upnpSigHandler);
+	signal(SIGTERM, upnpSigHandler);
 	return true;
 
 Lupnp_command_error:
