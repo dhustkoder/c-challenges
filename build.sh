@@ -27,3 +27,4 @@ for proj in ${PROJECTS[@]}; do
 	${proj}/build.sh "${CC}" "${CFLAGS}" "${BUILD_DIR}/$(basename $proj)"
 done
 
+
