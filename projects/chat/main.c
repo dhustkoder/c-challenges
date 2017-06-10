@@ -17,21 +17,20 @@
 
 
 #define RETFAIL(label) do { ret = EXIT_FAILURE; goto label; } while (0)
+#define UNAME_SIZE      ((int)24)
+#define IPSTR_SIZE      (INET_ADDRSTRLEN)
+#define CHAT_STACK_SIZE ((int)24)
+#define BUFFER_SIZE     ((int)512)
 
-
-static const int kNickSize             = 24;
-static const int kIpSize               = INET_ADDRSTRLEN;
-static const int kChatStackSize        = 24;
-static const int kBufferSize           = 512;
-static char buffer[512]                = { '\0' };
-static char* chatstack[24]             = { NULL };
-static int chatstack_idx               = 0;
-static char host_ip[INET_ADDRSTRLEN]   = { '\0' };
-static char client_ip[INET_ADDRSTRLEN] = { '\0' };
-static char host_nick[24]              = { '\0' };
-static char client_nick[24]            = { '\0' };
-static char* local_nick                = NULL;
-static char* remote_nick               = NULL;
+static char buffer[BUFFER_SIZE]         = { '\0' };
+static char* chatstack[CHAT_STACK_SIZE] = { NULL };
+static int chatstack_idx                = 0;
+static char host_ip[IPSTR_SIZE]         = { '\0' };
+static char client_ip[IPSTR_SIZE]       = { '\0' };
+static char host_uname[UNAME_SIZE]      = { '\0' };
+static char client_uname[UNAME_SIZE]    = { '\0' };
+static char* local_uname                = NULL;
+static char* remote_uname               = NULL;
 
 static enum ConMode { CONMODE_HOST, CONMODE_CLIENT } conmode;
 
@@ -125,11 +124,11 @@ static inline int waitDataBy(const int fd1, const int fd2, const long usecs)
 
 static inline bool stackMsg(const char* const nick, const char* const msg)
 {
-	if (chatstack_idx >= kChatStackSize) {
+	if (chatstack_idx >= CHAT_STACK_SIZE) {
 		free(chatstack[0]);
 		for (int i = 0; i < chatstack_idx - 1; ++i)
 			chatstack[i] = chatstack[i + 1];
-		chatstack_idx = kChatStackSize - 1;
+		chatstack_idx = CHAT_STACK_SIZE - 1;
 	}
 
 	const int len = strlen(msg) + strlen(nick) + 3;
@@ -150,12 +149,12 @@ static inline void freeMsgStack(void)
 static inline void printChat(void)
 {
 	printf("Host: %s (%s). Client: %s (%s).\n",
-	       host_nick, host_ip, client_nick, client_ip);
+	       host_uname, host_ip, client_uname, client_ip);
 
 	int i;
 	for (i = 0; i < chatstack_idx; ++i)
 		puts(chatstack[i]);
-	for (; i < kChatStackSize; ++i)
+	for (; i < CHAT_STACK_SIZE; ++i)
 		printf("\n");
 
 	printf("===============================================\n> ");
@@ -169,7 +168,7 @@ static inline bool parseChatCommand(const char* const cmd, const bool is_local)
 		if (is_local)
 			puts("You closed the connection.");
 		else
-			printf("\nConnection closed by %s.\n", remote_nick);
+			printf("\nConnection closed by %s.\n", remote_uname);
 		return false;
 	} else if (is_local) {
 		printf("Unknown command %s.\n", cmd);
@@ -182,7 +181,7 @@ static inline bool parseChatCommand(const char* const cmd, const bool is_local)
 static inline int chat(const int confd)
 {
 	const int usecs = 1000 * 50;
-	const char* nick;
+	const char* uname;
 	int rfd, wfd, ready;
 
 	for (;;) {
@@ -195,16 +194,16 @@ static inline int chat(const int confd)
 		if (ready == 1) {
 			rfd = STDIN_FILENO;
 			wfd = confd;
-			nick = local_nick;
+			uname = local_uname;
 		} else if (ready == 2) {
 			rfd = confd;
 			wfd = -1;
-			nick = remote_nick;
+			uname = remote_uname;
 		} else {
 			break;
 		}
 
-		if (!readInto(buffer, rfd, kBufferSize) ||
+		if (!readInto(buffer, rfd, BUFFER_SIZE) ||
 		    (wfd != -1 && !writeInto(wfd, buffer)))
 			return EXIT_FAILURE;
 
@@ -212,7 +211,7 @@ static inline int chat(const int confd)
 			if (!parseChatCommand(buffer, rfd == STDIN_FILENO))
 				break;
 		} else {
-			stackMsg(nick, buffer);
+			stackMsg(uname, buffer);
 		}
 	}
 
@@ -233,8 +232,8 @@ static inline void upnpSigHandler(const int sig)
 static inline bool initializeUPNP(const char* const port)
 {
 	int error = 0;
-	char lan_addr[64];
-	char wan_addr[64];
+	char lan_addr[IPSTR_SIZE];
+	char wan_addr[IPSTR_SIZE];
 	upnp_info.port = malloc(strlen(port) + 1);
 	strcpy(upnp_info.port, port);
 	upnp_info.proto = "TCP";
@@ -322,10 +321,10 @@ static inline int host(void)
 {
 	int ret;
 	conmode = CONMODE_HOST;
-	local_nick = host_nick;
-	remote_nick = client_nick;
-	askUserFor("Enter your username: ", host_nick, kNickSize);
-	askUserFor("Enter the connection port: ", buffer, kBufferSize);
+	local_uname = host_uname;
+	remote_uname = client_uname;
+	askUserFor("Enter your username: ", host_uname, UNAME_SIZE);
+	askUserFor("Enter the connection port: ", buffer, BUFFER_SIZE);
 	const unsigned short port = strtoll(buffer, NULL, 0);
 
 	if (!initializeUPNP(buffer))
@@ -399,10 +398,10 @@ static inline int host(void)
 		RETFAIL(Lclose_fd);
 	}
 
-	inet_ntop(AF_INET, &cliaddr.sin_addr, client_ip, kIpSize);
+	inet_ntop(AF_INET, &cliaddr.sin_addr, client_ip, IPSTR_SIZE);
 
-	if (!exchange(clifd, host_nick, client_nick, kNickSize) ||
-	    !exchange(clifd, client_ip, host_ip, kIpSize))
+	if (!exchange(clifd, host_uname, client_uname, UNAME_SIZE) ||
+	    !exchange(clifd, client_ip, host_ip, IPSTR_SIZE))
 		RETFAIL(Lclose_clifd);
 
 	ret = chat(clifd);
@@ -421,10 +420,10 @@ static inline int client(void)
 {
 	int ret;
 	conmode = CONMODE_CLIENT;
-	local_nick = client_nick;
-	remote_nick = host_nick;
-	askUserFor("Enter your username: ", client_nick, kNickSize);
-	askUserFor("Enter the connection port: ", buffer, kBufferSize);
+	local_uname = client_uname;
+	remote_uname = host_uname;
+	askUserFor("Enter your username: ", client_uname, UNAME_SIZE);
+	askUserFor("Enter the connection port: ", buffer, BUFFER_SIZE);
 	const unsigned short port = strtoll(buffer, NULL, 0);
 
 	const int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -439,7 +438,7 @@ static inline int client(void)
 	 * */
 	printf("Enter the host IP: ");
 	fflush(stdout);
-	readInto(host_ip, STDIN_FILENO, kIpSize);
+	readInto(host_ip, STDIN_FILENO, IPSTR_SIZE);
 	struct hostent *hostent = gethostbyname(host_ip);
 	if (hostent == NULL) {
 		perror("Couldn't get host by name");
@@ -460,8 +459,8 @@ static inline int client(void)
 		RETFAIL(Lclose_fd);
 	}
 
-	if (!exchange(fd, client_nick, host_nick, kNickSize) ||
-	    !exchange(fd, host_ip, client_ip, kIpSize))
+	if (!exchange(fd, client_uname, host_uname, UNAME_SIZE) ||
+	    !exchange(fd, host_ip, client_ip, IPSTR_SIZE))
 		RETFAIL(Lclose_fd);
 
 	ret = chat(fd);
