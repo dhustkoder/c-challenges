@@ -244,7 +244,9 @@ static inline bool initializeUPNP(const char* const port)
 	        NULL   , // path to minissdpd socket (or null defaults to /var/run/minissdpd.sock)
 	        0      , // source port to use (or zero defaults to port 1900)
 	        0      , // 0==IPv4, 1==IPv6
-		0      , // ttl
+	        #if MINIUPNPC_API_VERSION >= 16
+		0      , // ttl (only on >= 16 MINIUPNC_API_VERSION)
+	        #endif
 	        &error); // error condition
 
 	if (error != UPNPDISCOVER_SUCCESS) {
