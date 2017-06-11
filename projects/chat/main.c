@@ -155,7 +155,7 @@ static inline void printChat(void)
 	for (i = 0; i < chatstack_idx; ++i)
 		puts(chatstack[i]);
 	for (; i < CHAT_STACK_SIZE; ++i)
-		printf("\n");
+		putchar('\n');
 
 	printf("===============================================\n> ");
 	fflush(stdout);
