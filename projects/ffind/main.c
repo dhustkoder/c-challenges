@@ -7,6 +7,8 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+
+typedef unsigned short u_short;
 #include <fts.h>
 #include <pthread.h>
 #include <utils/debug.h>
@@ -105,7 +107,7 @@ static inline int mtfind(char* const rootdir, const char* const target)
 		if (parent->fts_info != FTS_D)
 			continue;
 
-		dprintf("SCANNING %s\n LINKS %lu\n", parent->fts_path, parent->fts_statp->st_nlink);
+		dprintf("SCANNING %s\n LINKS %u\n", parent->fts_path, parent->fts_statp->st_nlink);
 		const FTSENT* const child = fts_children(ftsp, FTS_NAMEONLY);
 		
 		int i = 0;
