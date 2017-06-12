@@ -1,5 +1,6 @@
 #include <string.h>
 #include <stdbool.h>
+#include <signal.h>
 #include <ctype.h>
 #include <locale.h>
 #include <curses.h>
@@ -7,9 +8,11 @@
 
 #define BUFFER_SIZE ((int)512)
 static char buffer[BUFFER_SIZE] = { '\0' };
-static int buffer_idx = 0;
+static int buflen = 0;
+static int bufidx = 0;
 static int cx = 0, cy = 0;
 
+static inline void refreshTextBox(void);
 
 static inline void initialize_ncurses(void)
 {
@@ -17,6 +20,7 @@ static inline void initialize_ncurses(void)
 	noecho();
 	timeout(0);
 	keypad(stdscr, TRUE);
+	signal(SIGWINCH, (void(*)(int))refreshTextBox);
 }
 
 
@@ -31,7 +35,7 @@ static inline void refreshTextBox(void)
 	clear();
 	move(0, 0);
 	printw(buffer);
-	move(cy, cx % getmaxx(stdscr));
+	move(cy, cx);
 	refresh();
 }
 
@@ -39,10 +43,60 @@ static inline void refreshTextBox(void)
 static inline void clearTextBox(void)
 {
 	cy = cx = 0;
-	buffer_idx = 0;
+	buflen = 0;
+	bufidx = 0;
 	clear();
 	move(0, 0);
 	refresh();
+}
+
+
+static inline void moveCursorLeft(void)
+{
+	if (cx > 0 || cy > 0) {
+		--bufidx;
+		--cx;
+		if (cx < 0) {
+			cx = getmaxx(stdscr) - 1;
+			--cy;
+		}
+		move(cy, cx);
+	}
+}
+
+
+static inline void moveCursorRight(void)
+{
+	if (bufidx < buflen) {
+		++bufidx;
+		++cx;
+		if (cx >= getmaxx(stdscr)) {
+			cx = 0;
+			++cy;
+		}
+		move(cy, cx);
+	}
+}
+
+
+static inline void moveCursorHome(void)
+{
+	if (bufidx != 0) {
+		bufidx = 0;
+		cy = cx = 0;
+		move(cy, cx);
+	}
+}
+
+
+static inline void moveCursorEnd(void)
+{
+	if (bufidx < buflen) {
+		bufidx = buflen;
+		cx = buflen % getmaxx(stdscr);
+		cy = buflen / getmaxx(stdscr);
+		move(cy, cx);
+	}
 }
 
 
@@ -54,48 +108,35 @@ static inline bool updateTextBox(void)
 	case 10: // also enter (ascii) [fall]
 	case KEY_ENTER: // submit msg
 		return true;
-
 	case KEY_LEFT:
-		if (cx > 0) {
-			--cx;
-			cy = cx / getmaxx(stdscr);
-			move(cy, cx % getmaxx(stdscr));
-		}
+		moveCursorLeft();
 		return false;
 	case KEY_RIGHT:
-		if (cx < buffer_idx) {
-			++cx;
-			cy = cx / getmaxx(stdscr);
-			move(cy, cx % getmaxx(stdscr));
-		}
+		moveCursorRight();
 		return false;
 	case 127: // also backspace (ascii) [fall]
 	case KEY_BACKSPACE:
-		if (cx > 0) {
-			memmove(&buffer[cx - 1], &buffer[cx], buffer_idx - cx);
-			buffer[--buffer_idx] = '\0';
-			--cx;
+		if (bufidx > 0) {
+			memmove(&buffer[bufidx - 1], &buffer[bufidx], buflen - bufidx);
+			buffer[--buflen] = '\0';
+			moveCursorLeft();
 			refreshTextBox();
 		}
 		return false;
 	case KEY_HOME:
-		cy = cx = 0;
-		move(cy, cx);
+		moveCursorHome();
 		return false;
 	case KEY_END:
-		if (cx < buffer_idx) {
-			cx = buffer_idx;
-			cy = cx / getmaxx(stdscr);
-			move(cy, cx % getmaxx(stdscr));
-			return false;
-		}
+		moveCursorEnd();
+		return false;
 	}
 
-	if (isascii(c) && buffer_idx < BUFFER_SIZE) {
-		if (cx < buffer_idx)
-			memmove(&buffer[cx + 1], &buffer[cx], buffer_idx - cx);
-		buffer[cx++] = (char) c;
-		buffer[++buffer_idx] = '\0';
+	if (isascii(c) && buflen < BUFFER_SIZE) {
+		if (bufidx < buflen)
+			memmove(&buffer[bufidx + 1], &buffer[bufidx], buflen - bufidx);
+		buffer[bufidx] = (char) c;
+		buffer[++buflen] = '\0';
+		moveCursorRight();
 		refreshTextBox();
 	}
 
