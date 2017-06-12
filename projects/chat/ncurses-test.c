@@ -3,7 +3,7 @@
 #include <signal.h>
 #include <ctype.h>
 #include <locale.h>
-#include <curses.h>
+#include <ncurses.h>
 
 
 #define BUFFER_SIZE ((int)512)
