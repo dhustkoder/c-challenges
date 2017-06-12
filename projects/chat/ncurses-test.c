@@ -11,8 +11,8 @@ static char buffer[BUFFER_SIZE] = { '\0' };
 static int buflen = 0;
 static int bufidx = 0;
 static int cx = 0, cy = 0;
+static int mx, my;
 
-static inline void refreshTextBox(void);
 
 static inline void initialize_ncurses(void)
 {
@@ -20,7 +20,7 @@ static inline void initialize_ncurses(void)
 	noecho();
 	timeout(0);
 	keypad(stdscr, TRUE);
-	signal(SIGWINCH, (void(*)(int))refreshTextBox);
+	getmaxyx(stdscr, my, mx);
 }
 
 
@@ -37,6 +37,15 @@ static inline void refreshTextBox(void)
 	printw(buffer);
 	move(cy, cx);
 	refresh();
+}
+
+
+static inline void handleWindowResize(void)
+{
+	getmaxyx(stdscr, my, mx);
+	cx = bufidx % mx;
+	cy = bufidx / mx;
+	refreshTextBox();
 }
 
 
@@ -57,7 +66,7 @@ static inline void moveCursorLeft(void)
 		--bufidx;
 		--cx;
 		if (cx < 0) {
-			cx = getmaxx(stdscr) - 1;
+			cx = mx - 1;
 			--cy;
 		}
 		move(cy, cx);
@@ -70,7 +79,7 @@ static inline void moveCursorRight(void)
 	if (bufidx < buflen) {
 		++bufidx;
 		++cx;
-		if (cx >= getmaxx(stdscr)) {
+		if (cx >= mx) {
 			cx = 0;
 			++cy;
 		}
@@ -93,8 +102,8 @@ static inline void moveCursorEnd(void)
 {
 	if (bufidx < buflen) {
 		bufidx = buflen;
-		cx = buflen % getmaxx(stdscr);
-		cy = buflen / getmaxx(stdscr);
+		cx = buflen % mx;
+		cy = buflen / mx;
 		move(cy, cx);
 	}
 }
@@ -128,6 +137,9 @@ static inline bool updateTextBox(void)
 		return false;
 	case KEY_END:
 		moveCursorEnd();
+		return false;
+	case KEY_RESIZE:
+		handleWindowResize();
 		return false;
 	}
 
