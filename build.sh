@@ -12,7 +12,7 @@ if [[ "${CC}" == "" ]]; then
 fi
 
 
-CFLAGS="-std=c11 -pedantic-errors -Wall -Wextra -I ${ROOT_DIR}/projects"
+CFLAGS="-Wall -Wextra -I ${ROOT_DIR}/projects"
 CFLAGS_DEBUG="-O0 -ggdb -fsanitize=address -DDEBUG_"
 CFLAGS_RELEASE="-O3 -s"
 
