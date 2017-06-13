@@ -5,8 +5,8 @@
 #include <signal.h>
 #include <unistd.h>
 #include <sys/select.h>
-
-#include "upnp.h"
+#include "utils/io.h"
+#include "network.h"
 
 
 #define CHAT_STACK_SIZE ((int)24)
@@ -15,71 +15,11 @@
 static char buffer[BUFFER_SIZE]         = { '\0' };
 static char* chatstack[CHAT_STACK_SIZE] = { NULL };
 static int chatstack_idx                = 0;
-static char host_ip[IPSTR_SIZE]         = { '\0' };
-static char client_ip[IPSTR_SIZE]       = { '\0' };
-static char host_uname[UNAME_SIZE]      = { '\0' };
-static char client_uname[UNAME_SIZE]    = { '\0' };
-static char* local_uname                = NULL;
-static char* remote_uname               = NULL;
-
-static enum ConMode { CONMODE_HOST, CONMODE_CLIENT } conmode;
-
-
-static inline bool readInto(char* const dest, const int fdsrc, const int maxsize)
-{
-	int n;
-	if ((n = read(fdsrc, dest, maxsize - 1)) <= 0) {
-		perror("read");
-		return false;
-	}
-
-	if (dest[n - 1] == '\n')
-		--n;
-
-	dest[n] = '\0';
-	return true;
-}
-
-
-static inline bool writeInto(const int fd_dest, const char* const src)
-{
-	if (write(fd_dest, src, strlen(src)) <= 0) {
-		perror("write");
-		return false;
-	}
-	return true;
-}
-
-
-static inline bool exchange(const int fd, const char* const send, char* const recv, const int size)
-{
-	bool ret = true;
-
-	if (conmode == CONMODE_HOST) {
-		if (write(fd, send, size) == -1 || read(fd, recv, size) == -1)
-			ret = false;
-	} else {
-		if (read(fd, recv, size) == -1 || write(fd, send, size) == -1)
-			ret = false;
-	}
-
-	if (!ret)
-		perror("exchange failed");
-
-	return ret;
-}
 
 
 static inline void clearScreen(void)
 {
 	system("clear");
-}
-
-
-static inline void askUserFor(const char* const msg, char* const dest, const int size)
-{
-	writeInto(STDOUT_FILENO, msg);
-	readInto(dest, STDIN_FILENO, size);
 }
 
 
@@ -104,7 +44,7 @@ static inline int waitDataBy(const int fd1, const int fd2, const long usecs)
 }
 
 
-static inline bool stackMsg(const char* const nick, const char* const msg)
+static inline bool stackMsg(const char* const uname, const char* const msg)
 {
 	if (chatstack_idx >= CHAT_STACK_SIZE) {
 		free(chatstack[0]);
@@ -113,9 +53,9 @@ static inline bool stackMsg(const char* const nick, const char* const msg)
 		chatstack_idx = CHAT_STACK_SIZE - 1;
 	}
 
-	const int len = strlen(msg) + strlen(nick) + 3;
+	const int len = strlen(msg) + strlen(uname) + 3;
 	chatstack[chatstack_idx] = malloc(len + 1);
-	sprintf(chatstack[chatstack_idx], "%s: %s", nick, msg);
+	sprintf(chatstack[chatstack_idx], "%s: %s", uname, msg);
 	++chatstack_idx;
 	return true;
 }
@@ -128,10 +68,11 @@ static inline void freeMsgStack(void)
 }
 
 
-static inline void printChat(void)
+static inline void printChat(const ConnectionInfo* const cinfo)
 {
 	printf("Host: %s (%s). Client: %s (%s).\n",
-	       host_uname, host_ip, client_uname, client_ip);
+	       cinfo->host_uname, cinfo->host_ip,
+	       cinfo->client_uname, cinfo->client_ip);
 
 	int i;
 	for (i = 0; i < chatstack_idx; ++i)
@@ -144,13 +85,13 @@ static inline void printChat(void)
 }
 
 
-static inline bool parseChatCommand(const char* const cmd, const bool is_local)
+static inline bool parseChatCommand(const ConnectionInfo* const cinfo, const char* const cmd, const bool is_local)
 {
 	if (strcmp(cmd, "/quit") == 0) {
 		if (is_local)
 			puts("You closed the connection.");
 		else
-			printf("\nConnection closed by %s.\n", remote_uname);
+			printf("\nConnection closed by %s.\n", cinfo->remote_uname);
 		return false;
 	} else if (is_local) {
 		printf("Unknown command %s.\n", cmd);
@@ -160,7 +101,7 @@ static inline bool parseChatCommand(const char* const cmd, const bool is_local)
 }
 
 
-static inline int chat(const int confd)
+static inline int chat(const ConnectionInfo* const cinfo)
 {
 	const int usecs = 1000 * 50;
 	const char* uname;
@@ -168,19 +109,19 @@ static inline int chat(const int confd)
 
 	for (;;) {
 		clearScreen();
-		printChat();
+		printChat(cinfo);
 
-		while ((ready = waitDataBy(STDIN_FILENO, confd, usecs)) == 0)
+		while ((ready = waitDataBy(STDIN_FILENO, cinfo->remote_fd, usecs)) == 0)
 			continue;
 
 		if (ready == 1) {
 			rfd = STDIN_FILENO;
-			wfd = confd;
-			uname = local_uname;
+			wfd = cinfo->remote_fd;
+			uname = cinfo->local_uname;
 		} else if (ready == 2) {
-			rfd = confd;
+			rfd = cinfo->remote_fd;
 			wfd = -1;
-			uname = remote_uname;
+			uname = cinfo->remote_uname;
 		} else {
 			break;
 		}
@@ -190,7 +131,7 @@ static inline int chat(const int confd)
 			return EXIT_FAILURE;
 
 		if (buffer[0] == '/') {
-			if (!parseChatCommand(buffer, rfd == STDIN_FILENO))
+			if (!parseChatCommand(cinfo, buffer, rfd == STDIN_FILENO))
 				break;
 		} else {
 			stackMsg(uname, buffer);
@@ -202,24 +143,23 @@ static inline int chat(const int confd)
 }
 
 
-static void upnpSigHandler(const int sig)
-{
-	fprintf(stderr, "\nreceived signal: %d\nClosing...\n", sig);
-	terminate_upnp();
-	exit(sig);
-}
-
-
-
-
-
 int main(const int argc, const char* const * const argv)
 {
 	if (argc > 1) {
-		if (strcmp(argv[1], "client") == 0)
-			return client();
-		else if (strcmp(argv[1], "host") == 0)
-			return host();
+		const ConnectionInfo* cinfo = NULL;
+		if (strcmp(argv[1], "client") == 0) {
+			if ((cinfo = initialize_connection(CONMODE_CLIENT)) == NULL)
+				return EXIT_FAILURE;
+		} else if (strcmp(argv[1], "host") == 0) {
+			if ((cinfo = initialize_connection(CONMODE_HOST)) == NULL)
+				return EXIT_FAILURE;
+		}
+
+		if (cinfo != NULL) {
+			const int ret = chat(cinfo);
+			terminate_connection(cinfo);
+			return ret;
+		}
 	}
 
 	fprintf(stderr, "Usage: %s [type: host, client]\n", argv[0]);

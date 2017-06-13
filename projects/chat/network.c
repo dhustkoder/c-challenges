@@ -1,3 +1,12 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include "utils/io.h"
 #include "network.h"
 #include "upnp.h"
 
@@ -7,7 +16,7 @@ static inline bool client(void);
 void upnpSigHandler(int sig);
 
 
-static struct ConenctionInfo connection_info;
+static ConnectionInfo connection_info;
 static const int signums[3] = { SIGINT, SIGKILL, SIGTERM };
 static void(*prev_sig_handlers[3])(int) = { NULL };
 
@@ -15,14 +24,14 @@ static void(*prev_sig_handlers[3])(int) = { NULL };
 
 static inline void installUPNPSigHandler(void)
 {
-	for (int i = 0; i < (int)sizeof(signums)/sizeof(signums[0]); ++i)
+	for (int i = 0; i < (int)(sizeof(signums)/sizeof(signums[0])); ++i)
 		prev_sig_handlers[i] = signal(signums[i], upnpSigHandler);
 }
 
 
 static inline void uninstallUPNPSigHandler(void)
 {
-	for (int i = 0; i < (int)sizeof(signums)/sizeof(signums[0]); ++i)
+	for (int i = 0; i < (int)(sizeof(signums)/sizeof(signums[0])); ++i)
 		signal(signums[i], prev_sig_handlers[i]);
 }
 
@@ -35,7 +44,7 @@ void upnpSigHandler(const int sig)
 	// get the prev handler for this particular sig 
 	void(*prev_handler)(int) = NULL;
 
-	for (int i = 0; i < (int)sizeof(signums)/sizeof(signums[0]); ++i) {
+	for (int i = 0; i < (int)(sizeof(signums)/sizeof(signums[0])); ++i) {
 		if (sig == signums[i]) {
 			prev_handler = prev_sig_handlers[i];
 			break;
@@ -44,21 +53,27 @@ void upnpSigHandler(const int sig)
 
 	uninstallUPNPSigHandler();
 
-	if (prev_handler != NULL)
-		prev_handler();
+	if (prev_handler == NULL)
+		exit(sig);
 
+	prev_handler(sig);
 }
 
 
-const struct ConnectionInfo* initialize_connection(const enum ConnectionMode mode)
+const ConnectionInfo* initialize_connection(const enum ConnectionMode mode)
 {
 	if (mode == CONMODE_HOST) {
-		connection_info.local_uname = host_uname;
-		connection_info.remote_uname = client_uname;
+		connection_info.local_uname = connection_info.host_uname;
+		connection_info.remote_uname = connection_info.client_uname;
+		connection_info.local_ip = connection_info.host_ip;
+		connection_info.remote_ip = connection_info.client_ip;
 	} else if (mode == CONMODE_CLIENT) {
-		connection_info.local_uname = client_uname;
-		connection_info.remote_uname = host_uname;
+		connection_info.local_uname = connection_info.client_uname;
+		connection_info.remote_uname = connection_info.host_uname;
+		connection_info.local_ip = connection_info.client_ip;
+		connection_info.remote_ip = connection_info.host_ip;
 	} else {
+		fprintf(stderr, "Unknown ConnectionMode value specified.\n");
 		return NULL;
 	}
 
@@ -66,12 +81,27 @@ const struct ConnectionInfo* initialize_connection(const enum ConnectionMode mod
 	askUserFor("Enter your username: ", connection_info.local_uname, UNAME_SIZE);
 	askUserFor("Enter the connection port: ", connection_info.port, PORT_STR_SIZE);
 	
-	if (mode == CONMODE_HOST ? host() : client())
-		return &connection_info;
+	if (mode == CONMODE_HOST) {
+		if (!host())
+			return NULL;
+		write(connection_info.remote_fd, connection_info.host_uname, UNAME_SIZE);
+		read(connection_info.remote_fd, connection_info.client_uname, UNAME_SIZE);
+		write(connection_info.remote_fd, connection_info.client_ip, IP_STR_SIZE);
+		read(connection_info.remote_fd, connection_info.host_ip, IP_STR_SIZE);
+	} else {
+		if (!client())
+			return NULL;
+		read(connection_info.remote_fd, connection_info.host_uname, UNAME_SIZE);
+		write(connection_info.remote_fd, connection_info.client_uname, UNAME_SIZE);
+		read(connection_info.remote_fd, connection_info.client_ip, IP_STR_SIZE);
+		write(connection_info.remote_fd, connection_info.host_ip, IP_STR_SIZE);
+	}
+	
+	return &connection_info;
 }
 
 
-void terminate_connection(const struct ConnectionInfo* const cinfo)
+void terminate_connection(const ConnectionInfo* const cinfo)
 {
 	if (cinfo->mode == CONMODE_HOST) {
 		close(cinfo->remote_fd);
@@ -81,6 +111,7 @@ void terminate_connection(const struct ConnectionInfo* const cinfo)
 		close(cinfo->remote_fd);
 	}
 }
+
 
 static inline bool host(void)
 {
@@ -143,7 +174,6 @@ static inline bool host(void)
 
 	puts("Waiting for client...");
 
-
 	struct sockaddr_in cliaddr;
 	socklen_t clilen = sizeof(cliaddr);
 
@@ -161,11 +191,10 @@ static inline bool host(void)
 		goto Lclose_fd;
 	}
 
-	inet_ntop(AF_INET, &cliaddr.sin_addr, client_ip, IP_STR_SIZE);
-
-	if (!exchange(clifd, host_uname, client_uname, UNAME_SIZE) ||
-	    !exchange(clifd, client_ip, host_ip, IP_STR_SIZE))
+	if (inet_ntop(AF_INET, &cliaddr.sin_addr, connection_info.client_ip, IP_STR_SIZE) == NULL) {
+		perror("Couldn't get client ip");
 		goto Lclose_clifd;
+	}
 
 	connection_info.local_fd = fd;
 	connection_info.remote_fd = clifd;
@@ -193,10 +222,8 @@ static inline bool client(void)
 	 * for the given host name. Here name is either a hostname or an
 	 * IPv4 address.
 	 * */
-	printf("Enter the host IP: ");
-	fflush(stdout);
-	readInto(host_ip, STDIN_FILENO, IPSTR_SIZE);
-	struct hostent *hostent = gethostbyname(host_ip);
+	askUserFor("Enter the host IP: ", connection_info.host_ip, IP_STR_SIZE);
+	struct hostent *hostent = gethostbyname(connection_info.host_ip);
 	if (hostent == NULL) {
 		perror("Couldn't get host by name");
 		goto Lclose_fd;
@@ -216,10 +243,7 @@ static inline bool client(void)
 		goto Lclose_fd;
 	}
 
-	if (!exchange(fd, client_uname, host_uname, UNAME_SIZE) ||
-	    !exchange(fd, host_ip, client_ip, IPSTR_SIZE))
-		goto Lclose_fd;
-
+	connection_info.remote_fd = fd;
 	return true;
 
 Lclose_fd:

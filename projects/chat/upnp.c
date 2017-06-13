@@ -5,6 +5,7 @@
 #include <miniupnpc/upnpcommands.h>
 #include <miniupnpc/upnperrors.h>
 #include "upnp.h"
+#include "network.h"
 
 
 static struct UPNPInfo {
@@ -19,8 +20,8 @@ static struct UPNPInfo {
 bool initialize_upnp(const char* const port)
 {
 	int error = 0;
-	char lan_addr[IPSTR_SIZE];
-	char wan_addr[IPSTR_SIZE];
+	char lan_addr[IP_STR_SIZE];
+	char wan_addr[IP_STR_SIZE];
 	upnp_info.port = malloc(strlen(port) + 1);
 	strcpy(upnp_info.port, port);
 	upnp_info.proto = "TCP";
