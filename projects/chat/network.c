@@ -195,11 +195,11 @@ Lterminate_upnp:
 static inline bool client(void)
 {
 	int ret;
-	const unsigned short port = strtoll(buffer, NULL, 0);
+
 	const int fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (fd == -1) {
 		perror("Couldn't open socket");
-		return EXIT_FAILURE;
+		return false;
 	}
 	
 	/* The gethostbyname() function returns a struct of type hostent
@@ -212,7 +212,7 @@ static inline bool client(void)
 	struct hostent *hostent = gethostbyname(host_ip);
 	if (hostent == NULL) {
 		perror("Couldn't get host by name");
-		RETFAIL(Lclose_fd);
+		goto Lclose_fd;
 	}
 
 	/* The connect() function shall attempt to make a connection on a 
@@ -222,21 +222,21 @@ static inline bool client(void)
 	struct sockaddr_in hostaddr;
 	memset(&hostaddr, 0, sizeof(hostaddr));
 	hostaddr.sin_family = AF_INET;
-	hostaddr.sin_port = htons(port);
+	hostaddr.sin_port = htons(strtol(connection_info.port, NULL, 0));
 	memcpy(&hostaddr.sin_addr.s_addr, hostent->h_addr_list[0], hostent->h_length);
 	if (connect(fd, (struct sockaddr*)&hostaddr, sizeof(hostaddr)) == -1) {
 		perror("Couldn't connect");
-		RETFAIL(Lclose_fd);
+		goto Lclose_fd;
 	}
 
 	if (!exchange(fd, client_uname, host_uname, UNAME_SIZE) ||
 	    !exchange(fd, host_ip, client_ip, IPSTR_SIZE))
-		RETFAIL(Lclose_fd);
+		goto Lclose_fd;
+
+	return true;
 
 Lclose_fd:
 	close(fd);
-	return ret;
+	return false;
 }
-
-#undef RETFAIL
 
