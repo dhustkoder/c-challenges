@@ -12,7 +12,7 @@ if [[ "${CC}" == "" ]]; then
 fi
 
 
-CFLAGS="-Wall -Wextra -I ${ROOT_DIR}/projects"
+CFLAGS="-std=gnu11 -Wall -Wextra -I ${ROOT_DIR}/projects"
 CFLAGS_DEBUG="-O0 -ggdb -fsanitize=address -DDEBUG_"
 CFLAGS_RELEASE="-O3 -s"
 
