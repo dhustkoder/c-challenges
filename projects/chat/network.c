@@ -2,36 +2,19 @@
 #include "upnp.h"
 
 
-#define UNAME_SIZE  ((int)24)
+static inline bool host(void);
+static inline bool client(void);
+void upnpSigHandler(int sig);
 
 
-struct ConnectionInfo {
-	char host_uname[UNAME_SIZE];
-	char client_uname[UNAME_SIZE];
-	char ip[IP_STR_SIZE];
-	char port[PORT_STR_SIZE];
-	char* local_uname;
-	char* remote_uname;
-	enum ConnectionMode mode;
-	int local_fd;
-	int remote_fd;
-};
-
-
-struct ConenctionInfo connection_info;
-
-
+static struct ConenctionInfo connection_info;
 static const int signums[3] = { SIGINT, SIGKILL, SIGTERM };
 static void(*prev_sig_handlers[3])(int) = { NULL };
 
 
-static inline bool host(void);
-static inline bool client(void);
-
 
 static inline void installUPNPSigHandler(void)
 {
-	void upnpSigHandler(int);
 	for (int i = 0; i < (int)sizeof(signums)/sizeof(signums[0]); ++i)
 		prev_sig_handlers[i] = signal(signums[i], upnpSigHandler);
 }
@@ -67,31 +50,37 @@ void upnpSigHandler(const int sig)
 }
 
 
-struct ConnectionInfo* initialize_connection(const enum ConnectionMode mode)
+const struct ConnectionInfo* initialize_connection(const enum ConnectionMode mode)
 {
-	int(*confun)(void) = NULL;
 	if (mode == CONMODE_HOST) {
 		connection_info.local_uname = host_uname;
 		connection_info.remote_uname = client_uname;
-		confun = host;
 	} else if (mode == CONMODE_CLIENT) {
 		connection_info.local_uname = client_uname;
 		connection_info.remote_uname = host_uname;
-		confun = client;
-	}
-
-	if (confun == NULL)
+	} else {
 		return NULL;
+	}
 
 	connection_info.mode = mode;
 	askUserFor("Enter your username: ", connection_info.local_uname, UNAME_SIZE);
-	askUserFor("Enter the connection port: ", connection_info.port);
+	askUserFor("Enter the connection port: ", connection_info.port, PORT_STR_SIZE);
 	
-	if (confun())
+	if (mode == CONMODE_HOST ? host() : client())
 		return &connection_info;
-
 }
 
+
+void terminate_connection(const struct ConnectionInfo* const cinfo)
+{
+	if (cinfo->mode == CONMODE_HOST) {
+		close(cinfo->remote_fd);
+		close(cinfo->local_fd);
+		terminate_upnp();
+	} else if (cinfo->mode == CONMODE_CLIENT) {
+		close(cinfo->remote_fd);
+	}
+}
 
 static inline bool host(void)
 {
@@ -172,10 +161,10 @@ static inline bool host(void)
 		goto Lclose_fd;
 	}
 
-	inet_ntop(AF_INET, &cliaddr.sin_addr, client_ip, IPSTR_SIZE);
+	inet_ntop(AF_INET, &cliaddr.sin_addr, client_ip, IP_STR_SIZE);
 
 	if (!exchange(clifd, host_uname, client_uname, UNAME_SIZE) ||
-	    !exchange(clifd, client_ip, host_ip, IPSTR_SIZE))
+	    !exchange(clifd, client_ip, host_ip, IP_STR_SIZE))
 		goto Lclose_clifd;
 
 	connection_info.local_fd = fd;
