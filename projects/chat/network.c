@@ -194,8 +194,6 @@ Lterminate_upnp:
 
 static inline bool client(void)
 {
-	int ret;
-
 	const int fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (fd == -1) {
 		perror("Couldn't open socket");
