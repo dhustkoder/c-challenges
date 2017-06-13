@@ -23,24 +23,24 @@ int cy, cx;               // current cursor position in the window
 int my, mx;               // max y and x positions
 int hy, hx;               // text box's home y and x (start position)
 
-static void printChat(void);
-static inline void initialize_ncurses(void)
+static void printUI(void);
+static inline void initializeUI(void)
 {
 	initscr();
 	noecho();
 	timeout(0);
 	keypad(stdscr, TRUE);
-	clear();
-	move(0, 0);
-	printChat();
+
+	printUI();
 	getmaxyx(stdscr, my, mx);
 	getyx(stdscr, hy, hx);
 	cy = hy;
 	cx = hx;
+	refresh();
 }
 
 
-static inline void terminate_ncurses(void)
+static inline void terminateUI(void)
 {
 	endwin();
 }
@@ -106,8 +106,10 @@ static inline void moveCursorEnd(void)
 }
 
 
-static inline void printChat(void)
+static inline void printUI(void)
 {
+	clear();
+	move(0, 0);
 	printw("Host: %s (%s). Client: %s (%s).\n"
 	       "=================================================\n",
 	       connection_info->host_uname, connection_info->host_ip,
@@ -125,24 +127,14 @@ static inline void printChat(void)
 
 static inline void refreshUI(void)
 {
-	clear();
-	move(0, 0);
-	printChat();
-	printw(buffer);
-	move(cy, cx);
-	refresh();
-}
-
-
-static inline void handleWindowResize(void)
-{
-	clear();
-	move(0, 0);
-	printChat();
+	printUI();
 	getyx(stdscr, hy, hx);
 	getmaxyx(stdscr, my, mx);
 	cy = hy + (bidx / mx);
 	cx = hx + (bidx % mx);
+	printw(buffer);
+	move(cy, cx);
+	refresh();
 }
 
 
@@ -152,8 +144,8 @@ static inline bool updateTextBox(void)
 
 	switch (c) {
 	case 10: // also enter (ascii) [fall]
-	case KEY_ENTER: // submit msg
-		return true;
+	case KEY_ENTER: // submit msg, if any
+		return blen > 0;
 	case KEY_LEFT:
 		moveCursorLeft();
 		return false;
@@ -163,9 +155,7 @@ static inline bool updateTextBox(void)
 	case 127: // also backspace (ascii) [fall]
 	case KEY_BACKSPACE:
 		if (bidx > 0) {
-			memmove(&buffer[bidx - 1],
-			        &buffer[bidx],
-				blen - bidx);
+			memmove(&buffer[bidx - 1], &buffer[bidx], blen - bidx);
 			buffer[--blen] = '\0';
 			moveCursorLeft();
 			refreshUI();
@@ -178,17 +168,13 @@ static inline bool updateTextBox(void)
 		moveCursorEnd();
 		return false;
 	case KEY_RESIZE:
-		handleWindowResize();
 		refreshUI();
 		return false;
 	}
 
 	if (isascii(c) && blen < BUFFER_SIZE) {
-		if (bidx < blen) {
-			memmove(&buffer[bidx + 1],
-			        &buffer[bidx],
-				blen - bidx);
-		}
+		if (bidx < blen)
+			memmove(&buffer[bidx + 1], &buffer[bidx], blen - bidx);
 		buffer[bidx] = (char) c;
 		buffer[++blen] = '\0';
 		moveCursorRight();
@@ -240,8 +226,7 @@ static inline bool checkfd(const int fd)
 int chat(const ConnectionInfo* const cinfo)
 {
 	connection_info = cinfo;
-	initialize_ncurses();
-	refreshUI();
+	initializeUI();
 
 	for (;;) {
 
@@ -257,7 +242,7 @@ int chat(const ConnectionInfo* const cinfo)
 		}
 	}
 
-	terminate_ncurses();
+	terminateUI();
 	freeMsgStack();
 	return EXIT_SUCCESS;
 }
