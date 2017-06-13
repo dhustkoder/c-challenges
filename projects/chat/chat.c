@@ -11,17 +11,18 @@
 #define CHAT_STACK_SIZE ((int)24)
 #define BUFFER_SIZE     ((int)512)
 
-static const ConnectionInfo* connection_info = NULL;     // connection information
-static char conn_buffer[BUFFER_SIZE]         = { '\0' }; // buffer for incoming msgs
-static char* chatstack[CHAT_STACK_SIZE]      = { NULL }; // the chat msg stack with unames
-static int chatstack_idx                     = 0;        // current chat stack index
+static const ConnectionInfo* cinfo      = NULL;     // connection information
+static char conn_buffer[BUFFER_SIZE]    = { '\0' }; // buffer for incoming msgs
+static char* chatstack[CHAT_STACK_SIZE] = { NULL }; // the chat msg stack with unames
+static int chatstack_idx                = 0;        // current chat stack index
 
-char buffer[BUFFER_SIZE]; // text box's buffer for user input
-int blen;                 // text box's current buffer input size
-int bidx;                 // text box's cursor position in the buffer
-int cy, cx;               // current cursor position in the window
-int my, mx;               // max y and x positions
-int hy, hx;               // text box's home y and x (start position)
+static char buffer[BUFFER_SIZE]         = { '\0' }; // text box's buffer for user input
+static int blen                         = 0;        // text box's current buffer size
+static int bidx                         = 0;        // text box's cursor position in the buffer
+static int cy, cx;                                  // current cursor position in the window
+static int my, mx;                                  // max y and x positions
+static int hy, hx;                                  // text box's home y and x (start position)
+
 
 static void printUI(void);
 static inline void initializeUI(void)
@@ -112,8 +113,8 @@ static inline void printUI(void)
 	move(0, 0);
 	printw("Host: %s (%s). Client: %s (%s).\n"
 	       "=================================================\n",
-	       connection_info->host_uname, connection_info->host_ip,
-	       connection_info->client_uname, connection_info->client_ip);
+	       cinfo->host_uname, cinfo->host_ip,
+	       cinfo->client_uname, cinfo->client_ip);
 
 	int i;
 	for (i = 0; i < chatstack_idx; ++i)
@@ -223,13 +224,15 @@ static inline bool checkfd(const int fd)
 }
 
 
-int chat(const ConnectionInfo* const cinfo)
+int chat(const enum ConnectionMode mode)
 {
-	connection_info = cinfo;
+	if ((cinfo = initialize_connection(mode)) == NULL)
+		return EXIT_FAILURE;
+
 	initializeUI();
 
 	for (;;) {
-
+	
 		if (checkfd(cinfo->remote_fd)) {
 			readInto(conn_buffer, cinfo->remote_fd, BUFFER_SIZE);
 			stackMsg(cinfo->remote_uname, conn_buffer);
