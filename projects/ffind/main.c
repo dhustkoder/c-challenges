@@ -8,7 +8,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-typedef unsigned short u_short;
+
 #include <fts.h>
 #include <pthread.h>
 #include <utils/debug.h>

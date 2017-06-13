@@ -6,6 +6,8 @@ OUTDIR="$3"
 LIBS="-lminiupnpc -lncurses"
 
 echo "${CC} ${CFLAGS} ${LIBS} ${PROJDIR}/main.c -o ${OUTDIR}"
-$CC $CFLAGS $LIBS $PROJDIR/main.c -o $OUTDIR
+$CC $CFLAGS $LIBS $PROJDIR/main.c $PROJDIR/upnp.c -o $OUTDIR
+
+
 echo "$CC $CFLAGS $LIBS $PROJDIR/ncurses-test.c -o $(dirname $OUTDIR)/ncurses"
 $CC $CFLAGS $LIBS $PROJDIR/ncurses-test.c -o $(dirname $OUTDIR)/ncurses
