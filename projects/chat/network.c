@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <signal.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -17,47 +16,6 @@ void upnpSigHandler(int sig);
 
 
 static ConnectionInfo connection_info;
-static const int signums[3] = { SIGINT, SIGKILL, SIGTERM };
-static void(*prev_sig_handlers[3])(int) = { NULL };
-
-
-
-static inline void installUPNPSigHandler(void)
-{
-	for (int i = 0; i < (int)(sizeof(signums)/sizeof(signums[0])); ++i)
-		prev_sig_handlers[i] = signal(signums[i], upnpSigHandler);
-}
-
-
-static inline void uninstallUPNPSigHandler(void)
-{
-	for (int i = 0; i < (int)(sizeof(signums)/sizeof(signums[0])); ++i)
-		signal(signums[i], prev_sig_handlers[i]);
-}
-
-
-void upnpSigHandler(const int sig)
-{
-	// remove port forwarding
-	terminate_upnp();
-
-	// get the prev handler for this particular sig 
-	void(*prev_handler)(int) = NULL;
-
-	for (int i = 0; i < (int)(sizeof(signums)/sizeof(signums[0])); ++i) {
-		if (sig == signums[i]) {
-			prev_handler = prev_sig_handlers[i];
-			break;
-		}
-	}
-
-	uninstallUPNPSigHandler();
-
-	if (prev_handler == NULL)
-		exit(sig);
-
-	prev_handler(sig);
-}
 
 
 const ConnectionInfo* initialize_connection(const enum ConnectionMode mode)
@@ -117,10 +75,6 @@ static inline bool host(void)
 {
 	if (!initialize_upnp(connection_info.port))
 		return false;
-
-	// prevent the upnp to keep the port forwarding
-	// if a SIGNAL is received
-	installUPNPSigHandler();
 
 	/* socket(), creates an endpoint for communication and returns a
 	 * file descriptor that refers to that endpoint                */

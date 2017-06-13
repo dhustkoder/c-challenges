@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
 #include <string.h>
 #include <miniupnpc/miniupnpc.h>
 #include <miniupnpc/upnpcommands.h>
@@ -15,6 +16,49 @@ static struct UPNPInfo {
 	char* port;
 	const char* proto;
 } upnp_info = { .dev = NULL, .port = NULL, .proto = NULL };
+
+#define UPNP_SIGNUMS_SIZE ((int)3)
+static const int signums[UPNP_SIGNUMS_SIZE] = { SIGINT, SIGKILL, SIGTERM };
+static void(*prev_sig_handlers[UPNP_SIGNUMS_SIZE])(int) = { NULL };
+
+
+static inline void installUPNPSigHandler(void)
+{
+	void upnpSigHandler(int);
+	for (int i = 0; i < UPNP_SIGNUMS_SIZE; ++i)
+		prev_sig_handlers[i] = signal(signums[i], upnpSigHandler);
+}
+
+
+static inline void uninstallUPNPSigHandler(void)
+{
+	for (int i = 0; i < UPNP_SIGNUMS_SIZE; ++i)
+		signal(signums[i], prev_sig_handlers[i]);
+}
+
+
+void upnpSigHandler(const int sig)
+{
+	// remove port forwarding
+	terminate_upnp();
+
+	// get the prev handler for this particular sig 
+	void(*prev_handler)(int) = NULL;
+
+	for (int i = 0; i < UPNP_SIGNUMS_SIZE; ++i) {
+		if (sig == signums[i]) {
+			prev_handler = prev_sig_handlers[i];
+			break;
+		}
+	}
+
+	uninstallUPNPSigHandler();
+
+	if (prev_handler == NULL)
+		exit(sig);
+
+	prev_handler(sig);
+}
 
 
 bool initialize_upnp(const char* const port)
@@ -74,6 +118,9 @@ bool initialize_upnp(const char* const port)
 	if (error != UPNPCOMMAND_SUCCESS)
 		goto Lupnp_command_error;
 
+	// prevent the keeping of port forwarding
+	// if a signal is received
+	installUPNPSigHandler();
 	return true;
 
 Lupnp_command_error:
