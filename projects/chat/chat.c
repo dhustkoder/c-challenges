@@ -24,20 +24,24 @@ static int my, mx;                                  // max y and x positions
 static int hy, hx;                                  // text box's home y and x (start position)
 
 
-static bool stackMsg(const char* const uname, const char* const msg)
+static void stackMsgPushBack(char* str)
 {
 	if (chatstack_idx >= CHAT_STACK_SIZE) {
 		free(chatstack[0]);
-		for (int i = 0; i < chatstack_idx - 1; ++i)
+		for (int i = 0; i < (CHAT_STACK_SIZE - 1); ++i)
 			chatstack[i] = chatstack[i + 1];
 		chatstack_idx = CHAT_STACK_SIZE - 1;
 	}
+	chatstack[chatstack_idx++] = str;
+}
 
-	const int len = strlen(msg) + strlen(uname) + 3;
-	chatstack[chatstack_idx] = malloc(len + 1);
-	sprintf(chatstack[chatstack_idx], "%s: %s", uname, msg);
-	++chatstack_idx;
-	return true;
+
+static void stackMsg(const char* const uname, const char* const msg)
+{
+	const int len = strlen(uname) + strlen(msg) + 3;
+	char* const str = malloc(len + 1);
+	sprintf(str, "%s: %s", uname, msg);
+	stackMsgPushBack(str);
 }
 
 
@@ -83,8 +87,6 @@ static void printUI(void)
 
 	printw("==================================================\n> ");
 }
-
-
 
 
 static void clearTextBox(void)
@@ -238,7 +240,7 @@ int chat(const enum ConnectionMode mode)
 	refreshUI();
 
 	for (;;) {
-	
+
 		if (checkfd(cinfo->remote_fd)) {
 			readInto(conn_buffer, cinfo->remote_fd, BUFFER_SIZE);
 			stackMsg(cinfo->remote_uname, conn_buffer);
