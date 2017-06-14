@@ -27,10 +27,15 @@ static int hy, hx;                                  // text box's home y and x (
 static void printUI(void);
 static inline void initializeUI(void)
 {
+	setlocale(LC_ALL, "");
 	initscr();
+	cbreak();
 	noecho();
-	timeout(0);
+	intrflush(stdscr, FALSE);
+	nodelay(stdscr, TRUE);
 	keypad(stdscr, TRUE);
+
+
 
 	printUI();
 	getmaxyx(stdscr, my, mx);
@@ -142,6 +147,8 @@ static inline void refreshUI(void)
 static inline bool updateTextBox(void)
 {
 	const int c = getch();
+	if (c == ERR)
+		return false;
 
 	switch (c) {
 	case 10: // also enter (ascii) [fall]
