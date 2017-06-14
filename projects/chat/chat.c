@@ -24,95 +24,49 @@ static int my, mx;                                  // max y and x positions
 static int hy, hx;                                  // text box's home y and x (start position)
 
 
-static void printUI(void);
-static inline void initializeUI(void)
+static bool stackMsg(const char* const uname, const char* const msg)
 {
-	setlocale(LC_ALL, "");
+	if (chatstack_idx >= CHAT_STACK_SIZE) {
+		free(chatstack[0]);
+		for (int i = 0; i < chatstack_idx - 1; ++i)
+			chatstack[i] = chatstack[i + 1];
+		chatstack_idx = CHAT_STACK_SIZE - 1;
+	}
+
+	const int len = strlen(msg) + strlen(uname) + 3;
+	chatstack[chatstack_idx] = malloc(len + 1);
+	sprintf(chatstack[chatstack_idx], "%s: %s", uname, msg);
+	++chatstack_idx;
+	return true;
+}
+
+
+static void freeMsgStack(void)
+{
+	for (int i = 0; i < chatstack_idx; ++i)
+		free(chatstack[i]);
+}
+
+
+static void initializeUI(void)
+{
+	setlocale(LC_ALL, "pt_BR.UTF-8");
 	initscr();
 	cbreak();
 	noecho();
 	intrflush(stdscr, FALSE);
 	nodelay(stdscr, TRUE);
 	keypad(stdscr, TRUE);
-
-
-
-	printUI();
-	getmaxyx(stdscr, my, mx);
-	getyx(stdscr, hy, hx);
-	cy = hy;
-	cx = hx;
-	refresh();
 }
 
 
-static inline void terminateUI(void)
+static void terminateUI(void)
 {
 	endwin();
 }
 
 
-static inline void clearTextBox(void)
-{
-	cy = hy;
-	cx = hx;
-	blen = 0;
-	bidx = 0;
-	buffer[0] = '\0';
-}
-
-
-static inline void moveCursorLeft(void)
-{
-	if (cy > hy || cx > hx) {
-		--bidx;
-		--cx;
-		if (cx < 0) {
-			cx = mx - 1;
-			--cy;
-		}
-		move(cy, cx);
-	}
-}
-
-
-static inline void moveCursorRight(void)
-{
-	if (bidx < blen) {
-		++bidx;
-		++cx;
-		if (cx >= mx) {
-			cx = 0;
-			++cy;
-		}
-		move(cy, cx);
-	}
-}
-
-
-static inline void moveCursorHome(void)
-{
-	if (bidx != 0) {
-		bidx = 0;
-		cy = hy;
-		cx = hx;
-		move(cy, cx);
-	}
-}
-
-
-static inline void moveCursorEnd(void)
-{
-	if (bidx < blen) {
-		bidx = blen;
-		cx = hx + (blen % mx);
-		cy = hy + (blen / mx);
-		move(cy, cx);
-	}
-}
-
-
-static inline void printUI(void)
+static void printUI(void)
 {
 	clear();
 	move(0, 0);
@@ -131,7 +85,70 @@ static inline void printUI(void)
 }
 
 
-static inline void refreshUI(void)
+
+
+static void clearTextBox(void)
+{
+	cy = hy;
+	cx = hx;
+	blen = 0;
+	bidx = 0;
+	buffer[0] = '\0';
+}
+
+
+static void moveCursorLeft(void)
+{
+	if (cy > hy || cx > hx) {
+		--bidx;
+		--cx;
+		if (cx < 0) {
+			cx = mx - 1;
+			--cy;
+		}
+		move(cy, cx);
+	}
+}
+
+
+static void moveCursorRight(void)
+{
+	if (bidx < blen) {
+		++bidx;
+		++cx;
+		if (cx >= mx) {
+			cx = 0;
+			++cy;
+		}
+		move(cy, cx);
+	}
+}
+
+
+static void moveCursorHome(void)
+{
+	if (bidx != 0) {
+		bidx = 0;
+		cy = hy;
+		cx = hx;
+		move(cy, cx);
+	}
+}
+
+
+static void moveCursorEnd(void)
+{
+	if (bidx < blen) {
+		bidx = blen;
+		cx = hx + (blen % mx);
+		cy = hy + (blen / mx);
+		move(cy, cx);
+	}
+}
+
+
+
+static void refreshUI(void)
 {
 	printUI();
 	getyx(stdscr, hy, hx);
@@ -144,11 +161,18 @@ static inline void refreshUI(void)
 }
 
 
-static inline bool updateTextBox(void)
+static bool updateTextBox(void)
 {
 	const int c = getch();
+
 	if (c == ERR)
 		return false;
+
+	#ifdef DEBUG_
+	char key[16];
+	sprintf(key, "%d", c);
+	stackMsg("KEY PRESSED", key);
+	#endif
 
 	switch (c) {
 	case 10: // also enter (ascii) [fall]
@@ -180,7 +204,7 @@ static inline bool updateTextBox(void)
 		return false;
 	}
 
-	if (isascii(c) && blen < BUFFER_SIZE) {
+	if (blen < BUFFER_SIZE) {
 		if (bidx < blen)
 			memmove(&buffer[bidx + 1], &buffer[bidx], blen - bidx);
 		buffer[bidx] = (char) c;
@@ -193,33 +217,7 @@ static inline bool updateTextBox(void)
 }
 
 
-
-static inline bool stackMsg(const char* const uname, const char* const msg)
-{
-	if (chatstack_idx >= CHAT_STACK_SIZE) {
-		free(chatstack[0]);
-		for (int i = 0; i < chatstack_idx - 1; ++i)
-			chatstack[i] = chatstack[i + 1];
-		chatstack_idx = CHAT_STACK_SIZE - 1;
-	}
-
-	const int len = strlen(msg) + strlen(uname) + 3;
-	chatstack[chatstack_idx] = malloc(len + 1);
-	sprintf(chatstack[chatstack_idx], "%s: %s", uname, msg);
-	++chatstack_idx;
-	return true;
-}
-
-
-static inline void freeMsgStack(void)
-{
-	for (int i = 0; i < chatstack_idx; ++i)
-		free(chatstack[i]);
-}
-
-
-
-static inline bool checkfd(const int fd)
+static bool checkfd(const int fd)
 {
 	struct timeval timeout = { 0, 0 };
 	fd_set fds;
@@ -237,6 +235,7 @@ int chat(const enum ConnectionMode mode)
 		return EXIT_FAILURE;
 
 	initializeUI();
+	refreshUI();
 
 	for (;;) {
 	
