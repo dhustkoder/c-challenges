@@ -171,8 +171,8 @@ static bool updateTextBox(void)
 		return false;
 
 	#ifdef DEBUG_
-	char key[16];
-	sprintf(key, "%d", c);
+	char key[11];
+	sprintf(key, "%i", c);
 	stackMsg("KEY PRESSED", key);
 	#endif
 
