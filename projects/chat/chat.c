@@ -54,7 +54,7 @@ static void freeMsgStack(void)
 
 static void initializeUI(void)
 {
-	setlocale(LC_ALL, "pt_BR.UTF-8");
+	setlocale(LC_ALL, "");
 	initscr();
 	cbreak();
 	noecho();
