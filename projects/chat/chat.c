@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <stdbool.h>
 #include <ctype.h>
@@ -53,14 +54,18 @@ static void stackMsg(const char* const uname, const char* const msg)
 
 static void stackInfo(const char* const fmt, ...)
 {
-	va_list vargs;
-	va_start(vargs, fmt);
+	va_list args;
+	va_start(args, fmt);
 
-	char* const str = malloc(vsnprintf(NULL, 0, fmt, vargs) + 1);
-	vsprintf(str, fmt, vargs);
+	char* const str = malloc(vsnprintf(NULL, 0, fmt, args) + 1);
+
+	va_end(args);
+	va_start(args, fmt);
+
+	vsprintf(str, fmt, args);
 	stackMsgPushBack(str);
 
-	va_end(vargs);
+	va_end(args);
 }
 
 
@@ -184,13 +189,6 @@ static void refreshUI(void)
 
 static bool updateTextBox(void)
 {
-	static bool need_clear = false;
-
-	if (need_clear) {
-		clearTextBox();
-		need_clear = false;
-	}
-
 	const int c = getch();
 
 	if (c == ERR)
@@ -203,11 +201,7 @@ static bool updateTextBox(void)
 	switch (c) {
 	case 10: // also enter (ascii) [fall]
 	case KEY_ENTER: // submit msg, if any
-		if (blen > 0) {
-			need_clear = true;
-			return true;
-		}
-		return false;
+		return blen > 0;
 	case KEY_LEFT:
 		moveCursorLeft();
 		return false;
@@ -296,6 +290,9 @@ int chat(const enum ConnectionMode mode)
 			} else {
 				stackMsg(uname, msg);
 			}
+
+			if (uname == cinfo->local_uname)
+				clearTextBox();
 			
 			uname = NULL;
 			msg = NULL;
