@@ -241,10 +241,16 @@ static bool updateTextBox(void)
 }
 
 
-static enum ChatCmd parseChatCommand(const char* const cmd)
+static enum ChatCmd parseChatCommand(const char* const uname, const char* const cmd)
 {
-	if (strcmp(cmd, "/quit") == 0)
+	if (strcmp(cmd, "/quit") == 0) {
+		stackInfo("Connection closed by %s. Press any key to exit...", uname);
+		refreshUI();
+		nodelay(stdscr, FALSE);
+		getch();
+		nodelay(stdscr, TRUE);
 		return CHATCMD_QUIT;
+	}
 	return CHATCMD_NORMAL;
 }
 
@@ -284,9 +290,9 @@ int chat(const enum ConnectionMode mode)
 		}
 
 		if (uname != NULL && msg != NULL) {
-			if (msg[0] == '/' && parseChatCommand(msg) == CHATCMD_QUIT) {
-				stackInfo("Connection closed by %s", uname);
-				break;
+			if (msg[0] == '/') {
+				if (parseChatCommand(uname, msg) == CHATCMD_QUIT)
+					break;
 			} else {
 				stackMsg(uname, msg);
 			}
@@ -300,7 +306,6 @@ int chat(const enum ConnectionMode mode)
 		}
 	}
 
-	refreshUI();
 	terminateUI();
 	freeMsgStack();
 	return EXIT_SUCCESS;
