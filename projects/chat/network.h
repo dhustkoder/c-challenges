@@ -12,7 +12,7 @@ enum ConnectionMode {
 };
 
 
-typedef struct ConnectionInfo {
+struct ConnectionInfo {
 	char host_uname[UNAME_SIZE];
 	char client_uname[UNAME_SIZE];
 	char host_ip[IP_STR_SIZE];
@@ -25,11 +25,11 @@ typedef struct ConnectionInfo {
 	int local_fd;
 	int remote_fd;
 	enum ConnectionMode mode;
-} ConnectionInfo;
+};
 
 
-extern const ConnectionInfo* initialize_connection(enum ConnectionMode mode);
-extern void terminate_connection(const ConnectionInfo* cinfo);
+extern const struct ConnectionInfo* initialize_connection(enum ConnectionMode mode);
+extern void terminate_connection(const struct ConnectionInfo* cinfo);
 
 
 

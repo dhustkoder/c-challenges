@@ -19,17 +19,17 @@ enum ChatCmd {
 };
 
 
-static const ConnectionInfo* cinfo      = NULL;     // connection information
-static char conn_buffer[BUFFER_SIZE]    = { '\0' }; // buffer for incoming msgs
-static char* chatstack[CHAT_STACK_SIZE] = { NULL }; // the chat msg stack with unames
-static int chatstack_idx                = 0;        // current chat stack index
+static const struct ConnectionInfo* cinfo = NULL;     // connection information
+static char conn_buffer[BUFFER_SIZE]      = { '\0' }; // buffer for incoming msgs
+static char* chatstack[CHAT_STACK_SIZE]   = { NULL }; // the chat msg stack with unames
+static int chatstack_idx                  = 0;        // current chat stack index
 
-static char buffer[BUFFER_SIZE]         = { '\0' }; // text box's buffer for user input
-static int blen                         = 0;        // text box's current buffer size
-static int bidx                         = 0;        // text box's cursor position in the buffer
-static int cy, cx;                                  // current cursor position in the window
-static int my, mx;                                  // max y and x positions
-static int hy, hx;                                  // text box's home y and x (start position)
+static char buffer[BUFFER_SIZE]           = { '\0' }; // text box's buffer for user input
+static int blen                           = 0;        // text box's current buffer size
+static int bidx                           = 0;        // text box's cursor position in the buffer
+static int cy, cx;                                    // current cursor position in the window
+static int my, mx;                                    // max y and x positions
+static int hy, hx;                                    // text box's home y and x (start position)
 
 
 static void stackMsgPushBack(char* str)

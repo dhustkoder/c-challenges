@@ -15,10 +15,10 @@ static inline bool client(void);
 void upnpSigHandler(int sig);
 
 
-static ConnectionInfo cinfo;
+static struct ConnectionInfo cinfo;
 
 
-const ConnectionInfo* initialize_connection(const enum ConnectionMode mode)
+const struct ConnectionInfo* initialize_connection(const enum ConnectionMode mode)
 {
 	if (mode == CONMODE_HOST) {
 		cinfo.local_uname = cinfo.host_uname;
@@ -59,7 +59,7 @@ const ConnectionInfo* initialize_connection(const enum ConnectionMode mode)
 }
 
 
-void terminate_connection(const ConnectionInfo* const cinfo)
+void terminate_connection(const struct ConnectionInfo* const cinfo)
 {
 	if (cinfo->mode == CONMODE_HOST) {
 		close(cinfo->remote_fd);
