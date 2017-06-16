@@ -11,6 +11,13 @@
 #define CHAT_STACK_SIZE ((int)24)
 #define BUFFER_SIZE     ((int)512)
 
+
+enum ChatCmd {
+	CHATCMD_NORMAL,
+	CHATCMD_QUIT
+};
+
+
 static const ConnectionInfo* cinfo      = NULL;     // connection information
 static char conn_buffer[BUFFER_SIZE]    = { '\0' }; // buffer for incoming msgs
 static char* chatstack[CHAT_STACK_SIZE] = { NULL }; // the chat msg stack with unames
@@ -38,10 +45,22 @@ static void stackMsgPushBack(char* str)
 
 static void stackMsg(const char* const uname, const char* const msg)
 {
-	const int len = strlen(uname) + strlen(msg) + 3;
-	char* const str = malloc(len + 1);
+	char* const str = malloc(snprintf(NULL, 0, "%s: %s", uname, msg) + 1);
 	sprintf(str, "%s: %s", uname, msg);
 	stackMsgPushBack(str);
+}
+
+
+static void stackInfo(const char* const fmt, ...)
+{
+	va_list vargs;
+	va_start(vargs, fmt);
+
+	char* const str = malloc(vsnprintf(NULL, 0, fmt, vargs) + 1);
+	vsprintf(str, fmt, vargs);
+	stackMsgPushBack(str);
+
+	va_end(vargs);
 }
 
 
@@ -72,8 +91,6 @@ static void terminateUI(void)
 
 static void printUI(void)
 {
-	clear();
-	move(0, 0);
 	printw("Host: %s (%s). Client: %s (%s).\n"
 	       "=================================================\n",
 	       cinfo->host_uname, cinfo->host_ip,
@@ -152,6 +169,8 @@ static void moveCursorEnd(void)
 
 static void refreshUI(void)
 {
+	clear();
+	move(0, 0);
 	printUI();
 	getyx(stdscr, hy, hx);
 	getmaxyx(stdscr, my, mx);
@@ -165,21 +184,30 @@ static void refreshUI(void)
 
 static bool updateTextBox(void)
 {
+	static bool need_clear = false;
+
+	if (need_clear) {
+		clearTextBox();
+		need_clear = false;
+	}
+
 	const int c = getch();
 
 	if (c == ERR)
 		return false;
 
 	#ifdef DEBUG_
-	char key[11];
-	sprintf(key, "%i", c);
-	stackMsg("KEY PRESSED", key);
+	stackInfo("KEY PRESSED %i", c);
 	#endif
 
 	switch (c) {
 	case 10: // also enter (ascii) [fall]
 	case KEY_ENTER: // submit msg, if any
-		return blen > 0;
+		if (blen > 0) {
+			need_clear = true;
+			return true;
+		}
+		return false;
 	case KEY_LEFT:
 		moveCursorLeft();
 		return false;
@@ -219,9 +247,17 @@ static bool updateTextBox(void)
 }
 
 
+static enum ChatCmd parseChatCommand(const char* const cmd)
+{
+	if (strcmp(cmd, "/quit") == 0)
+		return CHATCMD_QUIT;
+	return CHATCMD_NORMAL;
+}
+
+
 static bool checkfd(const int fd)
 {
-	struct timeval timeout = { 0, 0 };
+	struct timeval timeout = { 0, 5000 };
 	fd_set fds;
 
 	FD_ZERO(&fds);
@@ -239,20 +275,35 @@ int chat(const enum ConnectionMode mode)
 	initializeUI();
 	refreshUI();
 
+	const char *uname = NULL, *msg = NULL;
+
 	for (;;) {
 
 		if (checkfd(cinfo->remote_fd)) {
 			readInto(conn_buffer, cinfo->remote_fd, BUFFER_SIZE);
-			stackMsg(cinfo->remote_uname, conn_buffer);
-			refreshUI();
+			uname = cinfo->remote_uname;
+			msg = conn_buffer;
 		} else if (updateTextBox()) {
 			writeInto(cinfo->remote_fd, buffer);
-			stackMsg(cinfo->local_uname, buffer);
-			clearTextBox();
+			uname = cinfo->local_uname;
+			msg = buffer;
+		}
+
+		if (uname != NULL && msg != NULL) {
+			if (msg[0] == '/' && parseChatCommand(msg) == CHATCMD_QUIT) {
+				stackInfo("Connection closed by %s", uname);
+				break;
+			} else {
+				stackMsg(uname, msg);
+			}
+			
+			uname = NULL;
+			msg = NULL;
 			refreshUI();
 		}
 	}
 
+	refreshUI();
 	terminateUI();
 	freeMsgStack();
 	return EXIT_SUCCESS;
