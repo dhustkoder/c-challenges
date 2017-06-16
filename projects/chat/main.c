@@ -1,10 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include "network.h"
-
-
-extern int chat(enum ConnectionMode);
+#include "chat.h"
 
 
 int main(const int argc, const char* const * const argv)
