@@ -15,47 +15,47 @@ static inline bool client(void);
 void upnpSigHandler(int sig);
 
 
-static ConnectionInfo connection_info;
+static ConnectionInfo cinfo;
 
 
 const ConnectionInfo* initialize_connection(const enum ConnectionMode mode)
 {
 	if (mode == CONMODE_HOST) {
-		connection_info.local_uname = connection_info.host_uname;
-		connection_info.remote_uname = connection_info.client_uname;
-		connection_info.local_ip = connection_info.host_ip;
-		connection_info.remote_ip = connection_info.client_ip;
+		cinfo.local_uname = cinfo.host_uname;
+		cinfo.remote_uname = cinfo.client_uname;
+		cinfo.local_ip = cinfo.host_ip;
+		cinfo.remote_ip = cinfo.client_ip;
 	} else if (mode == CONMODE_CLIENT) {
-		connection_info.local_uname = connection_info.client_uname;
-		connection_info.remote_uname = connection_info.host_uname;
-		connection_info.local_ip = connection_info.client_ip;
-		connection_info.remote_ip = connection_info.host_ip;
+		cinfo.local_uname = cinfo.client_uname;
+		cinfo.remote_uname = cinfo.host_uname;
+		cinfo.local_ip = cinfo.client_ip;
+		cinfo.remote_ip = cinfo.host_ip;
 	} else {
 		fprintf(stderr, "Unknown ConnectionMode value specified.\n");
 		return NULL;
 	}
 
-	connection_info.mode = mode;
-	askUserFor("Enter your username: ", connection_info.local_uname, UNAME_SIZE);
-	askUserFor("Enter the connection port: ", connection_info.port, PORT_STR_SIZE);
+	cinfo.mode = mode;
+	askUserFor("Enter your username: ", cinfo.local_uname, UNAME_SIZE);
+	askUserFor("Enter the connection port: ", cinfo.port, PORT_STR_SIZE);
 	
 	if (mode == CONMODE_HOST) {
 		if (!host())
 			return NULL;
-		write(connection_info.remote_fd, connection_info.host_uname, UNAME_SIZE);
-		read(connection_info.remote_fd, connection_info.client_uname, UNAME_SIZE);
-		write(connection_info.remote_fd, connection_info.client_ip, IP_STR_SIZE);
-		read(connection_info.remote_fd, connection_info.host_ip, IP_STR_SIZE);
+		write(cinfo.remote_fd, cinfo.host_uname, UNAME_SIZE);
+		read(cinfo.remote_fd, cinfo.client_uname, UNAME_SIZE);
+		write(cinfo.remote_fd, cinfo.client_ip, IP_STR_SIZE);
+		read(cinfo.remote_fd, cinfo.host_ip, IP_STR_SIZE);
 	} else {
 		if (!client())
 			return NULL;
-		read(connection_info.remote_fd, connection_info.host_uname, UNAME_SIZE);
-		write(connection_info.remote_fd, connection_info.client_uname, UNAME_SIZE);
-		read(connection_info.remote_fd, connection_info.client_ip, IP_STR_SIZE);
-		write(connection_info.remote_fd, connection_info.host_ip, IP_STR_SIZE);
+		read(cinfo.remote_fd, cinfo.host_uname, UNAME_SIZE);
+		write(cinfo.remote_fd, cinfo.client_uname, UNAME_SIZE);
+		read(cinfo.remote_fd, cinfo.client_ip, IP_STR_SIZE);
+		write(cinfo.remote_fd, cinfo.host_ip, IP_STR_SIZE);
 	}
 	
-	return &connection_info;
+	return &cinfo;
 }
 
 
@@ -73,7 +73,7 @@ void terminate_connection(const ConnectionInfo* const cinfo)
 
 static inline bool host(void)
 {
-	if (!initialize_upnp(connection_info.port))
+	if (!initialize_upnp(cinfo.port))
 		return false;
 
 	/* socket(), creates an endpoint for communication and returns a
@@ -108,7 +108,7 @@ static inline bool host(void)
 	memset(&servaddr, 0, sizeof(servaddr));
 	servaddr.sin_family = AF_INET;          // IPv4 protocol
 	servaddr.sin_addr.s_addr = INADDR_ANY;  // bind to any interface
-	servaddr.sin_port = htons(strtoll(connection_info.port, NULL, 0));
+	servaddr.sin_port = htons(strtoll(cinfo.port, NULL, 0));
 	                                        /* htons() converts the unsigned short 
 	                                         * int from hostbyte order to
 						 * network byte order
@@ -145,13 +145,13 @@ static inline bool host(void)
 		goto Lclose_fd;
 	}
 
-	if (inet_ntop(AF_INET, &cliaddr.sin_addr, connection_info.client_ip, IP_STR_SIZE) == NULL) {
+	if (inet_ntop(AF_INET, &cliaddr.sin_addr, cinfo.client_ip, IP_STR_SIZE) == NULL) {
 		perror("Couldn't get client ip");
 		goto Lclose_clifd;
 	}
 
-	connection_info.local_fd = fd;
-	connection_info.remote_fd = clifd;
+	cinfo.local_fd = fd;
+	cinfo.remote_fd = clifd;
 	return true;
 
 Lclose_clifd:
@@ -176,8 +176,8 @@ static inline bool client(void)
 	 * for the given host name. Here name is either a hostname or an
 	 * IPv4 address.
 	 * */
-	askUserFor("Enter the host IP: ", connection_info.host_ip, IP_STR_SIZE);
-	struct hostent *hostent = gethostbyname(connection_info.host_ip);
+	askUserFor("Enter the host IP: ", cinfo.host_ip, IP_STR_SIZE);
+	struct hostent *hostent = gethostbyname(cinfo.host_ip);
 	if (hostent == NULL) {
 		perror("Couldn't get host by name");
 		goto Lclose_fd;
@@ -190,14 +190,14 @@ static inline bool client(void)
 	struct sockaddr_in hostaddr;
 	memset(&hostaddr, 0, sizeof(hostaddr));
 	hostaddr.sin_family = AF_INET;
-	hostaddr.sin_port = htons(strtol(connection_info.port, NULL, 0));
+	hostaddr.sin_port = htons(strtol(cinfo.port, NULL, 0));
 	memcpy(&hostaddr.sin_addr.s_addr, hostent->h_addr_list[0], hostent->h_length);
 	if (connect(fd, (struct sockaddr*)&hostaddr, sizeof(hostaddr)) == -1) {
 		perror("Couldn't connect");
 		goto Lclose_fd;
 	}
 
-	connection_info.remote_fd = fd;
+	cinfo.remote_fd = fd;
 	return true;
 
 Lclose_fd:
