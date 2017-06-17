@@ -20,16 +20,14 @@ struct ConnectionInfo {
 	char port[PORT_STR_SIZE];
 	char* local_uname;
 	char* remote_uname;
-	char* local_ip;
-	char* remote_ip;
 	int local_fd;
 	int remote_fd;
 	enum ConnectionMode mode;
 };
 
 
-extern const struct ConnectionInfo* initialize_connection(enum ConnectionMode mode);
-extern void terminate_connection(const struct ConnectionInfo* cinfo);
+extern const struct ConnectionInfo* initializeConnection(enum ConnectionMode mode);
+extern void terminateConnection(const struct ConnectionInfo* cinfo);
 
 
 

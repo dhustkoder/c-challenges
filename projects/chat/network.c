@@ -18,18 +18,14 @@ void upnpSigHandler(int sig);
 static struct ConnectionInfo cinfo;
 
 
-const struct ConnectionInfo* initialize_connection(const enum ConnectionMode mode)
+const struct ConnectionInfo* initializeConnection(const enum ConnectionMode mode)
 {
 	if (mode == CONMODE_HOST) {
 		cinfo.local_uname = cinfo.host_uname;
 		cinfo.remote_uname = cinfo.client_uname;
-		cinfo.local_ip = cinfo.host_ip;
-		cinfo.remote_ip = cinfo.client_ip;
 	} else if (mode == CONMODE_CLIENT) {
 		cinfo.local_uname = cinfo.client_uname;
 		cinfo.remote_uname = cinfo.host_uname;
-		cinfo.local_ip = cinfo.client_ip;
-		cinfo.remote_ip = cinfo.host_ip;
 	} else {
 		fprintf(stderr, "Unknown ConnectionMode value specified.\n");
 		return NULL;
@@ -59,7 +55,7 @@ const struct ConnectionInfo* initialize_connection(const enum ConnectionMode mod
 }
 
 
-void terminate_connection(const struct ConnectionInfo* const cinfo)
+void terminateConnection(const struct ConnectionInfo* const cinfo)
 {
 	if (cinfo->mode == CONMODE_HOST) {
 		close(cinfo->remote_fd);

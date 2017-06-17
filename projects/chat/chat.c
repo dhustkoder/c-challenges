@@ -32,7 +32,14 @@ static int my, mx;                                    // max y and x positions
 static int hy, hx;                                    // text box's home y and x (start position)
 
 
-static void stackMsgPushBack(char* str)
+static void freeChatStack(void)
+{
+	for (int i = 0; i < chatstack_idx; ++i)
+		free(chatstack[i]);
+}
+
+
+static void chatStackPushBack(char* str)
 {
 	if (chatstack_idx >= CHAT_STACK_SIZE) {
 		free(chatstack[0]);
@@ -48,7 +55,7 @@ static void stackMsg(const char* const uname, const char* const msg)
 {
 	char* const str = malloc(snprintf(NULL, 0, "%s: %s", uname, msg) + 1);
 	sprintf(str, "%s: %s", uname, msg);
-	stackMsgPushBack(str);
+	chatStackPushBack(str);
 }
 
 
@@ -63,16 +70,9 @@ static void stackInfo(const char* const fmt, ...)
 	va_start(args, fmt);
 
 	vsprintf(str, fmt, args);
-	stackMsgPushBack(str);
+	chatStackPushBack(str);
 
 	va_end(args);
-}
-
-
-static void freeMsgStack(void)
-{
-	for (int i = 0; i < chatstack_idx; ++i)
-		free(chatstack[i]);
 }
 
 
@@ -282,7 +282,7 @@ static bool checkfd(const int fd)
 
 int chat(const enum ConnectionMode mode)
 {
-	if ((cinfo = initialize_connection(mode)) == NULL)
+	if ((cinfo = initializeConnection(mode)) == NULL)
 		return EXIT_FAILURE;
 
 	initializeUI();
@@ -321,7 +321,7 @@ int chat(const enum ConnectionMode mode)
 	}
 
 	terminateUI();
-	freeMsgStack();
+	freeChatStack();
 	return EXIT_SUCCESS;
 }
 
