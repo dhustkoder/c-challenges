@@ -251,7 +251,7 @@ static bool updateTextBox(void)
 }
 
 
-static enum ChatCmd parseChatCommand(const char* const uname, const char* const cmd)
+static enum ChatCmd parseChatCmd(const char* const uname, const char* const cmd, const bool islocal)
 {
 	if (strcmp(cmd, "/quit") == 0) {
 		stackInfo("Connection closed by %s. Press any key to exit...", uname);
@@ -260,7 +260,10 @@ static enum ChatCmd parseChatCommand(const char* const uname, const char* const 
 		getch();
 		setKbdTimeout(prev);
 		return CHATCMD_QUIT;
+	} else if (islocal) {
+			stackInfo("Unknown command \'%s\'.", cmd);
 	}
+
 	return CHATCMD_NORMAL;
 }
 
@@ -299,14 +302,16 @@ int chat(const enum ConnectionMode mode)
 		}
 
 		if (uname != NULL && msg != NULL) {
+			const bool islocal = uname == cinfo->local_uname;
+
 			if (msg[0] == '/') {
-				if (parseChatCommand(uname, msg) == CHATCMD_QUIT)
+				if (parseChatCmd(uname, msg, islocal) == CHATCMD_QUIT)
 					break;
 			} else {
 				stackMsg(uname, msg);
 			}
 
-			if (uname == cinfo->local_uname)
+			if (islocal)
 				clearTextBox();
 			
 			uname = NULL;
