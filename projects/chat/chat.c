@@ -76,6 +76,16 @@ static void freeMsgStack(void)
 }
 
 
+static int setKbdTimeout(const int delay)
+{
+	static int curdelay = -1;
+	const int prevdelay = curdelay;
+	curdelay = delay;
+	timeout(curdelay);
+	return prevdelay;
+}
+
+
 static void initializeUI(void)
 {
 	setlocale(LC_ALL, "");
@@ -83,7 +93,7 @@ static void initializeUI(void)
 	cbreak();
 	noecho();
 	intrflush(stdscr, FALSE);
-	nodelay(stdscr, TRUE);
+	setKbdTimeout(5);
 	keypad(stdscr, TRUE);
 }
 
@@ -246,9 +256,9 @@ static enum ChatCmd parseChatCommand(const char* const uname, const char* const 
 	if (strcmp(cmd, "/quit") == 0) {
 		stackInfo("Connection closed by %s. Press any key to exit...", uname);
 		refreshUI();
-		nodelay(stdscr, FALSE);
+		const int prev = setKbdTimeout(-1);
 		getch();
-		nodelay(stdscr, TRUE);
+		setKbdTimeout(prev);
 		return CHATCMD_QUIT;
 	}
 	return CHATCMD_NORMAL;
@@ -278,7 +288,6 @@ int chat(const enum ConnectionMode mode)
 	const char *uname = NULL, *msg = NULL;
 
 	for (;;) {
-
 		if (checkfd(cinfo->remote_fd)) {
 			readInto(conn_buffer, cinfo->remote_fd, BUFFER_SIZE);
 			uname = cinfo->remote_uname;
