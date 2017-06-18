@@ -88,7 +88,6 @@ static int setKbdTimeout(const int delay)
 
 static void initializeUI(void)
 {
-	setlocale(LC_ALL, "");
 	initscr();
 	cbreak();
 	noecho();
@@ -238,7 +237,7 @@ static bool updateTextBox(void)
 		return false;
 	}
 
-	if (blen < BUFFER_SIZE) {
+	if (isascii(c) && blen < BUFFER_SIZE) {
 		if (bidx < blen)
 			memmove(&buffer[bidx + 1], &buffer[bidx], blen - bidx);
 		buffer[bidx] = (char) c;
