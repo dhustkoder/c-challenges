@@ -8,31 +8,36 @@ static void myprintf(const char* const fmt, ...)
 	va_list args;
 	va_start(args, fmt);
 
-	const char* pw = fmt;
-	const char* p = fmt;
-	for (; *p != '\0'; ++p) {
-		if (*p != '%' || *(p + 1) == '%' || *(p + 1) == '\0')
+	const int fd = STDOUT_FILENO;
+
+	const char *pw = fmt, *p = fmt;
+	while (*p != '\0') {
+		if (*p != '%' || *(p + 1) == '%' || *(p + 1) == '\0') {
+			++p;
 			continue;
+		}
 
-		write(STDOUT_FILENO, pw, p - pw);
-		pw = p + 2;
-		++p;
+		write(fd, pw, p - pw);
 
-		switch (*p) {
+		switch (*(p + 1)) {
 		case 'd': {
 			char buffer[128];
 			int buffidx = 128;
 			for (int num = va_arg(args, int); num > 0; num /= 10)
 				buffer[--buffidx] = "0123456789"[num % 10];
-			write(STDOUT_FILENO, &buffer[buffidx], 128 - buffidx);
+			write(fd, &buffer[buffidx], 128 - buffidx);
+			p += 2;
 			break; 
 		        }
 		case 's': {
 			const char* const str = va_arg(args, const char*);
-			write(STDOUT_FILENO, str, strlen(str));
+			write(fd, str, strlen(str));
+			p += 2;
 			break;
 			}
 		}
+
+		pw = p;
 	}
 
 	if ((p - pw) > 0)
